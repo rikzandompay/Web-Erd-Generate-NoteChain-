@@ -29,7 +29,7 @@ function App() {
     formData.append('file', file);
 
     try {
-      const response = await axios.post('http://localhost:8000/api/generate', formData, {
+      const response = await axios.post('/api/generate', formData, {
         responseType: 'blob', // Important: receive response as binary blob for download
         headers: {
           'Content-Type': 'multipart/form-data',

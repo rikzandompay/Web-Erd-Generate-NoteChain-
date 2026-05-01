@@ -8,6 +8,10 @@ from fastapi import FastAPI, File, HTTPException, UploadFile  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from fastapi.responses import Response  # type: ignore
 
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+
 from sql_parser import parse_sql  # type: ignore
 from generator import generate_drawio_xml  # type: ignore
 
@@ -16,8 +20,8 @@ app = FastAPI(title='SQL to ERD Generator')
 # ── CORS ─────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'],
-    allow_credentials=True,
+    allow_origins=['*'],
+    allow_credentials=False,
     allow_methods=['*'],
     allow_headers=['*'],
 )

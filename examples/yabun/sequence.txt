@@ -1,0 +1,488 @@
+' Sequence diagram Website Yayasan BUM Pontianak (YABUN)
+' Disusun dari routes/web.php dan controller di app/Http/Controllers
+
+=== Login Admin
+actor Admin
+boundary Sistem
+control Auth
+entity Pengguna
+
+Admin -> Sistem : Membuka halaman /admin/login
+Sistem --> Admin : Menampilkan form login
+Admin -> Sistem : Mengisi email dan kata sandi lalu klik Masuk
+Sistem -> Auth : authenticate(email, kata_sandi)
+Auth -> Auth : Cek batas percobaan login (maks. 5 per menit)
+Auth -> Pengguna : Cari pengguna berdasarkan email
+Pengguna --> Auth : Data pengguna
+alt Kredensial valid dan peran admin/superadmin
+  Auth -> Auth : Regenerasi session
+  Auth --> Sistem : Login berhasil
+  Sistem --> Admin : Redirect ke halaman dashboard
+else Kredensial tidak valid
+  Auth --> Sistem : Login gagal
+  Sistem --> Admin : Menampilkan pesan email atau kata sandi salah
+end
+
+=== Logout Admin
+actor Admin
+boundary Sistem
+control Auth
+
+Admin -> Sistem : Mengklik tombol Keluar
+Sistem -> Auth : logout()
+Auth -> Auth : Hapus dan regenerasi session
+Auth --> Sistem : Session berakhir
+Sistem --> Admin : Redirect ke halaman login
+
+=== Lihat Dashboard
+actor Admin
+boundary Sistem
+control DashboardController
+control FinanceSummaryService
+entity FinancialTransaction
+
+Admin -> Sistem : Membuka menu Dashboard
+Sistem -> DashboardController : index(request)
+DashboardController -> FinanceSummaryService : totalsByCategory()
+FinanceSummaryService -> FinancialTransaction : Hitung total per kategori donasi
+FinancialTransaction --> FinanceSummaryService : Total pemasukan dan pengeluaran
+FinanceSummaryService --> DashboardController : Ringkasan keuangan
+DashboardController -> FinancialTransaction : Ambil statistik donasi per periode
+FinancialTransaction --> DashboardController : Data statistik donasi
+DashboardController --> Sistem : view admin.dashboard.index
+Sistem --> Admin : Menampilkan card statistik dan grafik donasi
+
+=== Export Laporan Donasi
+actor Admin
+boundary Sistem
+control DashboardController
+entity FinancialTransaction
+
+Admin -> Sistem : Memilih periode lalu klik Export
+Sistem -> DashboardController : export(periode)
+DashboardController -> FinancialTransaction : Ambil donasi yang memiliki donatur
+FinancialTransaction --> DashboardController : Data donasi per periode
+DashboardController --> Sistem : File CSV laporan donasi
+Sistem --> Admin : Mengunduh file laporan-donasi.csv
+
+=== Tambah Foto Kegiatan
+actor Admin
+boundary Sistem
+control GalleryController
+entity GalleryPhoto
+
+Admin -> Sistem : Mengklik tombol Tambah Foto
+Sistem --> Admin : Menampilkan form unggah foto
+Admin -> Sistem : Mengisi judul, kategori, tanggal dan memilih foto
+Admin -> Sistem : Mengklik tombol Simpan
+Sistem -> GalleryController : store(request)
+GalleryController -> GalleryController : Validasi data dan file foto
+GalleryController -> GalleryController : Simpan file ke storage/gallery
+GalleryController -> GalleryPhoto : create(data foto)
+GalleryPhoto --> GalleryController : Foto tersimpan
+GalleryController --> Sistem : Redirect ke galeri dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Foto kegiatan berhasil diunggah
+
+=== Edit Foto Kegiatan
+actor Admin
+boundary Sistem
+control GalleryController
+entity GalleryPhoto
+
+Admin -> Sistem : Mengklik tombol Edit pada foto
+Sistem --> Admin : Menampilkan form edit foto
+Admin -> Sistem : Mengubah data atau mengganti foto lalu klik Simpan
+Sistem -> GalleryController : update(request, id)
+GalleryController -> GalleryPhoto : findOrFail(id)
+GalleryPhoto --> GalleryController : Data foto
+GalleryController -> GalleryController : Validasi data
+opt Foto baru diunggah
+  GalleryController -> GalleryController : Hapus file lama dan simpan file baru
+end
+GalleryController -> GalleryPhoto : save()
+GalleryPhoto --> GalleryController : Foto diperbarui
+GalleryController --> Sistem : Redirect ke galeri dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Foto kegiatan berhasil diperbarui
+
+=== Hapus Foto Kegiatan
+actor Admin
+boundary Sistem
+control GalleryController
+entity GalleryPhoto
+
+Admin -> Sistem : Mengklik tombol Hapus pada foto
+Sistem --> Admin : Menampilkan konfirmasi hapus
+Admin -> Sistem : Mengonfirmasi hapus
+Sistem -> GalleryController : destroy(id)
+GalleryController -> GalleryPhoto : findOrFail(id)
+GalleryPhoto --> GalleryController : Data foto
+GalleryController -> GalleryController : Hapus file dari storage
+GalleryController -> GalleryPhoto : delete()
+GalleryPhoto --> GalleryController : Foto terhapus
+GalleryController --> Sistem : Kembali dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Foto kegiatan berhasil dihapus
+
+=== Tambah Katalog
+actor Admin
+boundary Sistem
+control KatalogController
+entity Katalog
+
+Admin -> Sistem : Mengklik tombol Tambah Katalog
+Sistem --> Admin : Menampilkan form katalog
+Admin -> Sistem : Mengisi program, judul, deskripsi, gambar dan target penerima
+Admin -> Sistem : Mengklik tombol Simpan
+Sistem -> KatalogController : store(request)
+KatalogController -> KatalogController : Validasi data dan simpan gambar ke storage/katalog
+KatalogController -> Katalog : create(data katalog)
+Katalog --> KatalogController : Katalog tersimpan
+KatalogController --> Sistem : Redirect ke daftar katalog
+Sistem --> Admin : Menampilkan pesan Item katalog berhasil ditambahkan
+
+=== Edit Katalog
+actor Admin
+boundary Sistem
+control KatalogController
+entity Katalog
+
+Admin -> Sistem : Mengklik tombol Edit pada katalog
+Sistem --> Admin : Menampilkan form edit katalog
+Admin -> Sistem : Mengubah data katalog lalu klik Simpan
+Sistem -> KatalogController : update(request, id)
+KatalogController -> Katalog : findOrFail(id)
+Katalog --> KatalogController : Data katalog
+KatalogController -> KatalogController : Validasi data
+opt Gambar baru diunggah
+  KatalogController -> KatalogController : Hapus gambar lama dan simpan gambar baru
+end
+KatalogController -> Katalog : update(data katalog)
+Katalog --> KatalogController : Katalog diperbarui
+KatalogController --> Sistem : Redirect ke daftar katalog
+Sistem --> Admin : Menampilkan pesan Item katalog berhasil diperbarui
+
+=== Hapus Katalog
+actor Admin
+boundary Sistem
+control KatalogController
+entity Katalog
+
+Admin -> Sistem : Mengklik tombol Hapus pada katalog
+Sistem --> Admin : Menampilkan konfirmasi hapus
+Admin -> Sistem : Mengonfirmasi hapus
+Sistem -> KatalogController : destroy(id)
+KatalogController -> Katalog : findOrFail(id)
+Katalog --> KatalogController : Data katalog
+KatalogController -> KatalogController : Hapus gambar dari storage
+KatalogController -> Katalog : delete()
+Katalog --> KatalogController : Katalog terhapus
+KatalogController --> Sistem : Kembali dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Item katalog berhasil dihapus
+
+=== Tambah Artikel
+actor Admin
+boundary Sistem
+control ArticleController
+entity Article
+
+Admin -> Sistem : Mengklik tombol Tulis Artikel
+Sistem --> Admin : Menampilkan form artikel
+Admin -> Sistem : Mengisi judul, kategori program, isi, tanggal dan foto header
+Admin -> Sistem : Mengklik tombol Terbitkan
+Sistem -> ArticleController : store(request)
+ArticleController -> ArticleController : Validasi data dan simpan foto ke storage/articles
+ArticleController -> Article : create(data artikel)
+Article -> Article : Perbarui sitemap statis
+Article --> ArticleController : Artikel tersimpan
+ArticleController --> Sistem : Redirect ke daftar artikel
+Sistem --> Admin : Menampilkan pesan Artikel berhasil diterbitkan
+
+=== Edit Artikel
+actor Admin
+boundary Sistem
+control ArticleController
+entity Article
+
+Admin -> Sistem : Mengklik tombol Edit pada artikel
+Sistem --> Admin : Menampilkan form edit artikel
+Admin -> Sistem : Mengubah isi artikel lalu klik Simpan
+Sistem -> ArticleController : update(request, id)
+ArticleController -> Article : findOrFail(id)
+Article --> ArticleController : Data artikel
+ArticleController -> ArticleController : Validasi data
+opt Foto header baru diunggah
+  ArticleController -> ArticleController : Hapus foto lama dan simpan foto baru
+end
+ArticleController -> Article : update(data artikel)
+Article -> Article : Perbarui sitemap statis
+Article --> ArticleController : Artikel diperbarui
+ArticleController --> Sistem : Redirect ke daftar artikel
+Sistem --> Admin : Menampilkan pesan Artikel berhasil diperbarui
+
+=== Hapus Artikel
+actor Admin
+boundary Sistem
+control ArticleController
+entity Article
+
+Admin -> Sistem : Mengklik tombol Hapus pada artikel
+Sistem --> Admin : Menampilkan konfirmasi hapus
+Admin -> Sistem : Mengonfirmasi hapus
+Sistem -> ArticleController : destroy(id)
+ArticleController -> Article : findOrFail(id)
+Article --> ArticleController : Data artikel
+ArticleController -> ArticleController : Hapus foto header dari storage
+ArticleController -> Article : delete()
+Article --> ArticleController : Artikel terhapus
+ArticleController --> Sistem : Redirect ke daftar artikel
+Sistem --> Admin : Menampilkan pesan Artikel berhasil dihapus
+
+=== Tambah Donatur
+actor Admin
+boundary Sistem
+control DonorController
+entity Donatur
+entity FinancialTransaction
+control FinanceSummaryService
+
+Admin -> Sistem : Mengklik tombol Tambah Donatur
+Sistem --> Admin : Menampilkan form donatur dan donasi
+Admin -> Sistem : Mengisi nama, nomor HP, tipe, kategori, total dan tanggal donasi
+Admin -> Sistem : Mengklik tombol Simpan
+Sistem -> DonorController : store(request)
+DonorController -> DonorController : Validasi data (total donasi minimal Rp 1.000)
+alt Data valid
+  DonorController -> Donatur : create(nama, nomor HP, tipe)
+  Donatur --> DonorController : Donatur tersimpan
+  DonorController -> FinancialTransaction : create(pemasukan, kategori, jumlah)
+  FinancialTransaction --> DonorController : Transaksi tersimpan
+  DonorController -> FinanceSummaryService : clearCache()
+  DonorController --> Sistem : Redirect ke daftar donatur
+  Sistem --> Admin : Menampilkan pesan Data donatur dan donasi berhasil ditambahkan
+else Data tidak valid
+  DonorController --> Sistem : Kembali dengan pesan validasi
+  Sistem --> Admin : Menampilkan pesan kesalahan pada form
+end
+
+=== Edit Donatur
+actor Admin
+boundary Sistem
+control DonorController
+entity Donatur
+entity FinancialTransaction
+control FinanceSummaryService
+
+Admin -> Sistem : Mengklik tombol Edit pada donatur
+Sistem --> Admin : Menampilkan form edit donatur
+Admin -> Sistem : Mengubah data donatur dan donasi lalu klik Simpan
+Sistem -> DonorController : update(request, id)
+DonorController -> Donatur : findOrFail(id)
+Donatur --> DonorController : Data donatur
+DonorController -> Donatur : update(nama, nomor HP, tipe)
+DonorController -> FinancialTransaction : Perbarui transaksi pemasukan terakhir
+FinancialTransaction --> DonorController : Transaksi diperbarui
+DonorController -> FinanceSummaryService : clearCache()
+DonorController --> Sistem : Redirect ke daftar donatur
+Sistem --> Admin : Menampilkan pesan Data donatur dan donasi berhasil diperbarui
+
+=== Hapus Donatur
+actor Admin
+boundary Sistem
+control DonorController
+entity Donatur
+entity FinancialTransaction
+control FinanceSummaryService
+
+Admin -> Sistem : Mengklik tombol Hapus pada donatur
+Sistem --> Admin : Menampilkan konfirmasi hapus
+Admin -> Sistem : Mengonfirmasi hapus
+Sistem -> DonorController : destroy(id)
+DonorController -> Donatur : findOrFail(id)
+Donatur --> DonorController : Data donatur
+DonorController -> FinancialTransaction : Hapus riwayat donasi donatur
+DonorController -> Donatur : delete()
+DonorController -> FinanceSummaryService : clearCache()
+DonorController --> Sistem : Kembali dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Data donatur dan riwayat donasi berhasil dihapus
+
+=== Catat Transaksi Keuangan
+actor Admin
+boundary Sistem
+control FinancialTransactionController
+entity FinancialTransaction
+
+Admin -> Sistem : Mengklik tombol Catat Transaksi
+Sistem --> Admin : Menampilkan form transaksi
+Admin -> Sistem : Memilih jenis, kategori, jumlah, tanggal dan keterangan
+Admin -> Sistem : Mengklik tombol Simpan
+Sistem -> FinancialTransactionController : store(request)
+FinancialTransactionController -> FinancialTransactionController : Validasi data sesuai jenis transaksi
+FinancialTransactionController -> FinancialTransaction : create(data transaksi)
+FinancialTransaction --> FinancialTransactionController : Transaksi tersimpan
+alt Jenis pengeluaran
+  FinancialTransactionController --> Sistem : Redirect dengan pesan sisa saldo diperbarui
+else Jenis pemasukan
+  FinancialTransactionController --> Sistem : Redirect dengan pesan statistik donasi diperbarui
+end
+Sistem --> Admin : Menampilkan pesan sukses dan daftar transaksi
+
+=== Hapus Transaksi Keuangan
+actor Admin
+boundary Sistem
+control FinancialTransactionController
+entity FinancialTransaction
+
+Admin -> Sistem : Mengklik tombol Hapus pada transaksi
+Sistem --> Admin : Menampilkan konfirmasi hapus
+Admin -> Sistem : Mengonfirmasi hapus
+Sistem -> FinancialTransactionController : destroy(id)
+FinancialTransactionController -> FinancialTransaction : findOrFail(id)
+FinancialTransaction --> FinancialTransactionController : Data transaksi
+FinancialTransactionController -> FinancialTransaction : delete()
+FinancialTransaction --> FinancialTransactionController : Transaksi terhapus
+FinancialTransactionController --> Sistem : Redirect ke halaman keuangan
+Sistem --> Admin : Menampilkan pesan Transaksi berhasil dihapus
+
+=== Export Laporan Keuangan PDF
+actor Admin
+boundary Sistem
+control FinancialTransactionController
+entity FinancialTransaction
+entity Pengaturan
+
+Admin -> Sistem : Memilih filter kategori, jenis, periode lalu klik Export PDF
+Sistem -> FinancialTransactionController : exportPdf(request)
+FinancialTransactionController -> FinancialTransaction : Ambil transaksi sesuai filter
+FinancialTransaction --> FinancialTransactionController : Daftar transaksi
+FinancialTransactionController -> Pengaturan : Ambil profil yayasan
+Pengaturan --> FinancialTransactionController : Data pengaturan
+FinancialTransactionController -> FinancialTransactionController : Render view PDF laporan
+FinancialTransactionController --> Sistem : File PDF laporan keuangan
+Sistem --> Admin : Mengunduh file laporan keuangan
+
+=== Ubah Profil Yayasan
+actor Admin
+boundary Sistem
+control SettingController
+entity Pengaturan
+
+Admin -> Sistem : Membuka menu Setting
+Sistem --> Admin : Menampilkan form pengaturan umum
+Admin -> Sistem : Mengubah kontak, alamat dan profil yayasan lalu klik Simpan
+Sistem -> SettingController : updateGeneral(request)
+SettingController -> SettingController : Validasi data
+loop setiap kunci pengaturan
+  SettingController -> Pengaturan : updateOrCreate(kunci, nilai)
+end
+SettingController --> Sistem : Kembali dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Pengaturan profil yayasan berhasil disimpan
+
+=== Tambah Rekening Bank
+actor Admin
+boundary Sistem
+control SettingController
+entity RekeningBank
+
+Admin -> Sistem : Mengisi nama bank, nomor rekening dan atas nama
+Admin -> Sistem : Mengklik tombol Tambah Rekening
+Sistem -> SettingController : storeBank(request)
+SettingController -> SettingController : Validasi data rekening
+SettingController -> RekeningBank : create(data rekening)
+RekeningBank --> SettingController : Rekening tersimpan
+SettingController --> Sistem : Kembali dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Rekening bank donasi berhasil ditambahkan
+
+=== Hapus Rekening Bank
+actor Admin
+boundary Sistem
+control SettingController
+entity RekeningBank
+
+Admin -> Sistem : Mengklik tombol Hapus pada rekening
+Sistem --> Admin : Menampilkan konfirmasi hapus
+Admin -> Sistem : Mengonfirmasi hapus
+Sistem -> SettingController : destroyBank(id)
+SettingController -> RekeningBank : findOrFail(id)
+RekeningBank --> SettingController : Data rekening
+SettingController -> RekeningBank : delete()
+SettingController --> Sistem : Kembali dengan pesan sukses
+Sistem --> Admin : Menampilkan pesan Rekening bank donasi berhasil dihapus
+
+=== Ubah Password Admin
+actor Admin
+boundary Sistem
+control SettingController
+entity Pengguna
+
+Admin -> Sistem : Mengisi password saat ini dan password baru lalu klik Simpan
+Sistem -> SettingController : updateProfile(request)
+SettingController -> SettingController : Validasi data
+SettingController -> Pengguna : Ambil admin yang sedang login
+Pengguna --> SettingController : Data admin
+alt Password saat ini benar
+  SettingController -> Pengguna : Simpan hash password baru
+  SettingController --> Sistem : Kembali dengan pesan sukses
+  Sistem --> Admin : Menampilkan pesan Profil admin berhasil diperbarui
+else Password saat ini salah
+  SettingController --> Sistem : Kembali dengan pesan error
+  Sistem --> Admin : Menampilkan pesan password saat ini tidak sesuai
+end
+
+=== Lihat Beranda
+actor Pengunjung
+boundary Website
+control HomeController
+entity GalleryPhoto
+entity Katalog
+control FinanceSummaryService
+
+Pengunjung -> Website : Membuka halaman beranda
+Website -> HomeController : index(request)
+HomeController -> GalleryPhoto : Ambil foto kegiatan per kategori
+GalleryPhoto --> HomeController : Daftar foto
+HomeController -> Katalog : Ambil katalog program aktif
+Katalog --> HomeController : Daftar katalog
+HomeController -> FinanceSummaryService : totalsByCategory()
+FinanceSummaryService --> HomeController : Ringkasan transparansi donasi
+HomeController --> Website : view welcome
+Website --> Pengunjung : Menampilkan profil, program, galeri dan info donasi
+
+=== Lihat Daftar Artikel
+actor Pengunjung
+boundary Website
+control ArticleController
+entity Article
+
+Pengunjung -> Website : Membuka menu Artikel dan memilih filter
+Website -> ArticleController : index(kategori, kata kunci, tanggal)
+ArticleController -> Article : Ambil artikel terbit sesuai filter
+Article --> ArticleController : Daftar artikel
+ArticleController --> Website : view articles.index
+Website --> Pengunjung : Menampilkan daftar artikel
+
+=== Baca Detail Artikel
+actor Pengunjung
+boundary Website
+control ArticleController
+entity Article
+
+Pengunjung -> Website : Mengklik salah satu artikel
+Website -> ArticleController : show(slug)
+ArticleController -> Article : Cari artikel terbit berdasarkan slug
+Article --> ArticleController : Data artikel
+ArticleController -> Article : Ambil artikel terkait
+Article --> ArticleController : Artikel terkait
+ArticleController --> Website : view articles.show
+Website --> Pengunjung : Menampilkan isi artikel dan artikel terkait
+
+=== Lihat Galeri Kegiatan
+actor Pengunjung
+boundary Website
+control GalleryController
+entity GalleryPhoto
+
+Pengunjung -> Website : Membuka menu Galeri dan memilih kategori
+Website -> GalleryController : index(kategori)
+GalleryController -> GalleryPhoto : Ambil foto sesuai kategori
+GalleryPhoto --> GalleryController : Daftar foto
+GalleryController --> Website : view galeri.index
+Website --> Pengunjung : Menampilkan grid foto kegiatan

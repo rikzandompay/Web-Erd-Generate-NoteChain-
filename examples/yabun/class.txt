@@ -1,0 +1,195 @@
+' Class diagram Website Yayasan BUM Pontianak (YABUN)
+' Atribut dari migration, method dan relasi dari app/Models dan app/Http/Controllers
+
+=== Class Diagram Model
+class Authenticatable
+
+class User {
+  - id : bigint
+  - nama : varchar
+  - email : varchar
+  - kata_sandi : varchar
+  - peran : enum
+  - token_ingat : varchar
+  + canAccessPanel(panel) : bool
+  + setPasswordAttribute(value)
+}
+
+class Program {
+  - id : bigint
+  - nama_program : varchar
+  - slug : varchar
+  - deskripsi : text
+  - ikon : varchar
+  - status_aktif : boolean
+  + katalogs() : HasMany
+}
+
+class Katalog {
+  - id : bigint
+  - program_id : bigint
+  - judul : varchar
+  - slug : varchar
+  - deskripsi : text
+  - gambar : varchar
+  - target_penerima : varchar
+  - status : enum
+  + program() : BelongsTo
+  + getGambarUrlAttribute() : string
+}
+
+class ProgramCategory {
+  - id : bigint
+  - name : varchar
+  - slug : varchar
+  - description : text
+  - cover_image : varchar
+  + articles() : HasMany
+}
+
+class Article {
+  - id : bigint
+  - program_category_id : bigint
+  - title : varchar
+  - slug : varchar
+  - excerpt : text
+  - content : longtext
+  - header_image : varchar
+  - published_at : timestamp
+  - is_published : boolean
+  + programCategory() : BelongsTo
+  + scopePublished(query)
+  + scopeSearch(query, search)
+  + generateStaticSitemap()
+}
+
+class Donatur {
+  - id : bigint
+  - nama_donatur : varchar
+  - nomor_hp : varchar
+  - tipe_donatur : enum
+  + financialTransactions() : HasMany
+}
+
+class FinancialTransaction {
+  - id : bigint
+  - type : enum
+  - category : enum
+  - amount : decimal
+  - donor_id : bigint
+  - description : text
+  - transaction_date : date
+  + donor() : BelongsTo
+  + scopePemasukan(query)
+  + scopePengeluaran(query)
+}
+
+class FinanceSummaryService {
+  + totalsByCategory(fresh) : array
+  + resolveUnit(amount) : string
+  + clearCache()
+}
+
+class GalleryPhoto {
+  - id : bigint
+  - title : varchar
+  - image_path : varchar
+  - category : enum
+  - activity_date : date
+  - is_featured : boolean
+  - sort_order : int
+  + getImageUrlAttribute() : string
+}
+
+class RekeningBank {
+  - id : bigint
+  - nama_bank : varchar
+  - nomor_rekening : varchar
+  - atas_nama : varchar
+  - foto_qris : varchar
+  - status_aktif : boolean
+}
+
+class Pengaturan {
+  - id : bigint
+  - kunci : varchar
+  - nilai : longtext
+  - kelompok : varchar
+  + ambil(kunci, bawaan) : string
+}
+
+Authenticatable <|-- User
+Program "1" -- "0..*" Katalog : memiliki
+ProgramCategory "1" -- "0..*" Article : mengelompokkan
+Donatur "1" -- "0..*" FinancialTransaction : berdonasi
+FinanceSummaryService ..> FinancialTransaction
+
+=== Class Diagram Controller Admin
+class DashboardController {
+  + index(request)
+  + export(request)
+}
+class GalleryController {
+  + index(request)
+  + store(request)
+  + update(request, id)
+  + destroy(id)
+}
+class KatalogController {
+  + index(request)
+  + store(request)
+  + update(request, id)
+  + destroy(id)
+}
+class ArticleController {
+  + index(request)
+  + store(request)
+  + update(request, id)
+  + destroy(id)
+}
+class DonorController {
+  + index(request)
+  + store(request)
+  + update(request, id)
+  + destroy(id)
+}
+class FinancialTransactionController {
+  + index(request)
+  + store(request)
+  + destroy(id)
+  + exportPdf(request)
+}
+class SettingController {
+  + index()
+  + updateGeneral(request)
+  + storeBank(request)
+  + destroyBank(id)
+  + updateProfile(request)
+}
+class FinanceSummaryService
+class GalleryPhoto
+class Katalog
+class Program
+class Article
+class ProgramCategory
+class Donatur
+class FinancialTransaction
+class Pengaturan
+class RekeningBank
+class User
+
+DashboardController ..> FinanceSummaryService
+DashboardController ..> FinancialTransaction
+GalleryController ..> GalleryPhoto
+KatalogController ..> Katalog
+KatalogController ..> Program
+ArticleController ..> Article
+ArticleController ..> ProgramCategory
+DonorController ..> Donatur
+DonorController ..> FinancialTransaction
+DonorController ..> FinanceSummaryService
+FinancialTransactionController ..> FinancialTransaction
+FinancialTransactionController ..> Pengaturan
+SettingController ..> Pengaturan
+SettingController ..> RekeningBank
+SettingController ..> User

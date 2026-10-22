@@ -7,6 +7,12 @@ from raw SQL CREATE TABLE statements using RegEx.
 import re
 from typing import Any
 
+_FOREIGN_KEY_PATTERN = re.compile(
+    r'FOREIGN\s+KEY\s*\(\s*[`"\[]?(\w+)[`"\]]?\s*\)\s*'
+    r'REFERENCES\s+[`"\[]?(\w+)[`"\]]?\s*\(\s*[`"\[]?(\w+)[`"\]]?\s*\)',
+    re.IGNORECASE,
+)
+
 
 def strip_comments(sql: str) -> str:
     """Remove SQL comments: single-line (--) and multi-line (/* ... */)."""
@@ -150,6 +156,22 @@ def parse_sql(sql: str) -> dict[str, Any]:
                 col['is_pk'] = True
 
         tables.append({'name': table_name, 'columns': columns})
+
+    # ── FOREIGN KEYs added afterwards (dbdiagram.io / phpMyAdmin exports) ──
+    # e.g. ALTER TABLE `a` ADD CONSTRAINT `fk` FOREIGN KEY (`b_id`) REFERENCES `b` (`id`),
+    #                      ADD CONSTRAINT ... ;
+    alter_table_pattern = re.compile(
+        r'ALTER\s+TABLE\s+(?:ONLY\s+)?[`"\[]?(\w+)[`"\]]?(.*?);',
+        re.IGNORECASE | re.DOTALL,
+    )
+    for match in alter_table_pattern.finditer(sql):
+        for fk_match in _FOREIGN_KEY_PATTERN.finditer(match.group(2)):
+            relations.append({
+                'from_table': match.group(1),
+                'from_column': fk_match.group(1),
+                'to_table': fk_match.group(2),
+                'to_column': fk_match.group(3),
+            })
 
     if not tables:
         raise ValueError('No valid CREATE TABLE statements found in SQL file.')

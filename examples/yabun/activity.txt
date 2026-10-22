@@ -1,0 +1,459 @@
+' Activity diagram Website Yayasan BUM Pontianak (YABUN)
+' Disusun dari routes/web.php dan controller di app/Http/Controllers
+
+=== Login Admin
+|Admin|
+start
+:Membuka halaman /admin/login;
+|Sistem|
+:Menampilkan form login;
+|Admin|
+:Mengisi email dan kata sandi;
+:Klik tombol Masuk;
+|Sistem|
+if (Melebihi 5 percobaan per menit?) then (ya)
+  :Menolak login sementara;
+  stop
+else (tidak)
+  :Memeriksa email dan kata sandi;
+endif
+if (Kredensial valid?) then (ya)
+  :Regenerasi session;
+  :Menampilkan halaman dashboard;
+else (tidak)
+  :Menampilkan pesan kredensial salah;
+  -> Mengisi email dan kata sandi
+endif
+stop
+
+=== Logout Admin
+|Admin|
+start
+:Mengklik tombol Keluar;
+|Sistem|
+:Menghapus dan meregenerasi session;
+:Menampilkan halaman login;
+stop
+
+=== Lihat Dashboard
+|Admin|
+start
+:Membuka menu Dashboard;
+|Sistem|
+:Menghitung ringkasan donasi per kategori;
+:Mengambil statistik donasi per periode;
+:Menampilkan card statistik dan grafik donasi;
+|Admin|
+:Melihat ringkasan keuangan;
+stop
+
+=== Export Laporan Donasi
+|Admin|
+start
+:Memilih periode laporan;
+:Klik tombol Export;
+|Sistem|
+:Mengambil donasi yang memiliki donatur;
+:Membuat file CSV laporan donasi;
+|Admin|
+:Mengunduh file laporan;
+stop
+
+=== Tambah Foto Kegiatan
+|Admin|
+start
+:Membuka menu Galeri;
+:Klik tombol Tambah Foto;
+|Sistem|
+:Menampilkan form unggah foto;
+|Admin|
+:Mengisi judul, kategori, tanggal dan memilih foto;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data dan file foto;
+if (Data valid?) then (ya)
+  :Menyimpan file foto ke storage;
+  :Menyimpan data foto kegiatan;
+  :Menampilkan pesan foto berhasil diunggah;
+else (tidak)
+  :Menampilkan pesan kesalahan;
+  -> Mengisi judul, kategori, tanggal dan memilih foto
+endif
+stop
+
+=== Edit Foto Kegiatan
+|Admin|
+start
+:Klik tombol Edit pada foto;
+|Sistem|
+:Menampilkan form edit foto;
+|Admin|
+:Mengubah data atau mengganti foto;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+if (Ada foto baru?) then (ya)
+  :Menghapus file lama dan menyimpan file baru;
+else (tidak)
+endif
+:Memperbarui data foto kegiatan;
+:Menampilkan pesan foto berhasil diperbarui;
+stop
+
+=== Hapus Foto Kegiatan
+|Admin|
+start
+:Klik tombol Hapus pada foto;
+|Sistem|
+:Menampilkan konfirmasi hapus;
+|Admin|
+if (Yakin menghapus?) then (ya)
+  |Sistem|
+  :Menghapus file foto dari storage;
+  :Menghapus data foto kegiatan;
+  :Menampilkan pesan foto berhasil dihapus;
+else (tidak)
+  :Membatalkan penghapusan;
+endif
+stop
+
+=== Tambah Katalog
+|Admin|
+start
+:Membuka menu Katalog;
+:Klik tombol Tambah Katalog;
+|Sistem|
+:Menampilkan form katalog;
+|Admin|
+:Mengisi program, judul, deskripsi, gambar dan target penerima;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+if (Data valid?) then (ya)
+  :Menyimpan gambar ke storage;
+  :Menyimpan data katalog;
+  :Menampilkan pesan katalog berhasil ditambahkan;
+else (tidak)
+  :Menampilkan pesan kesalahan;
+  -> Mengisi program, judul, deskripsi, gambar dan target penerima
+endif
+stop
+
+=== Edit Katalog
+|Admin|
+start
+:Klik tombol Edit pada katalog;
+|Sistem|
+:Menampilkan form edit katalog;
+|Admin|
+:Mengubah data katalog;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+if (Ada gambar baru?) then (ya)
+  :Menghapus gambar lama dan menyimpan gambar baru;
+else (tidak)
+endif
+:Memperbarui data katalog;
+:Menampilkan pesan katalog berhasil diperbarui;
+stop
+
+=== Hapus Katalog
+|Admin|
+start
+:Klik tombol Hapus pada katalog;
+|Sistem|
+:Menampilkan konfirmasi hapus;
+|Admin|
+if (Yakin menghapus?) then (ya)
+  |Sistem|
+  :Menghapus gambar dari storage;
+  :Menghapus data katalog;
+  :Menampilkan pesan katalog berhasil dihapus;
+else (tidak)
+  :Membatalkan penghapusan;
+endif
+stop
+
+=== Tambah Artikel
+|Admin|
+start
+:Membuka menu Artikel;
+:Klik tombol Tulis Artikel;
+|Sistem|
+:Menampilkan form artikel;
+|Admin|
+:Mengisi judul, kategori program, isi, tanggal dan foto header;
+:Klik tombol Terbitkan;
+|Sistem|
+:Validasi data;
+if (Data valid?) then (ya)
+  :Menyimpan foto header ke storage;
+  :Menyimpan data artikel;
+  :Memperbarui sitemap;
+  :Menampilkan pesan artikel berhasil diterbitkan;
+else (tidak)
+  :Menampilkan pesan kesalahan;
+  -> Mengisi judul, kategori program, isi, tanggal dan foto header
+endif
+stop
+
+=== Edit Artikel
+|Admin|
+start
+:Klik tombol Edit pada artikel;
+|Sistem|
+:Menampilkan form edit artikel;
+|Admin|
+:Mengubah isi artikel;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+if (Ada foto header baru?) then (ya)
+  :Menghapus foto lama dan menyimpan foto baru;
+else (tidak)
+endif
+:Memperbarui data artikel;
+:Memperbarui sitemap;
+:Menampilkan pesan artikel berhasil diperbarui;
+stop
+
+=== Hapus Artikel
+|Admin|
+start
+:Klik tombol Hapus pada artikel;
+|Sistem|
+:Menampilkan konfirmasi hapus;
+|Admin|
+if (Yakin menghapus?) then (ya)
+  |Sistem|
+  :Menghapus foto header dari storage;
+  :Menghapus data artikel;
+  :Menampilkan pesan artikel berhasil dihapus;
+else (tidak)
+  :Membatalkan penghapusan;
+endif
+stop
+
+=== Tambah Donatur
+|Admin|
+start
+:Membuka menu Donatur;
+:Klik tombol Tambah Donatur;
+|Sistem|
+:Menampilkan form donatur dan donasi;
+|Admin|
+:Mengisi data donatur, kategori, total dan tanggal donasi;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+if (Total donasi minimal Rp 1.000 dan data lengkap?) then (ya)
+  fork
+    :Menyimpan data donatur;
+  fork again
+    :Mencatat transaksi pemasukan;
+  end fork
+  :Menghapus cache ringkasan keuangan;
+  :Menampilkan pesan donatur berhasil ditambahkan;
+else (tidak)
+  :Menampilkan pesan kesalahan;
+  -> Mengisi data donatur, kategori, total dan tanggal donasi
+endif
+stop
+
+=== Edit Donatur
+|Admin|
+start
+:Klik tombol Edit pada donatur;
+|Sistem|
+:Menampilkan form edit donatur;
+|Admin|
+:Mengubah data donatur dan donasi;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+:Memperbarui data donatur;
+:Memperbarui transaksi pemasukan terakhir;
+:Menghapus cache ringkasan keuangan;
+:Menampilkan pesan donatur berhasil diperbarui;
+stop
+
+=== Hapus Donatur
+|Admin|
+start
+:Klik tombol Hapus pada donatur;
+|Sistem|
+:Menampilkan konfirmasi hapus;
+|Admin|
+if (Yakin menghapus?) then (ya)
+  |Sistem|
+  :Menghapus riwayat donasi donatur;
+  :Menghapus data donatur;
+  :Menghapus cache ringkasan keuangan;
+  :Menampilkan pesan donatur berhasil dihapus;
+else (tidak)
+  :Membatalkan penghapusan;
+endif
+stop
+
+=== Catat Transaksi Keuangan
+|Admin|
+start
+:Membuka menu Keuangan;
+:Klik tombol Catat Transaksi;
+|Sistem|
+:Menampilkan form transaksi;
+|Admin|
+:Memilih jenis, kategori, jumlah dan tanggal;
+if (Jenis transaksi?) then (pemasukan)
+  :Memilih donatur;
+else (pengeluaran)
+  :Mengisi keterangan pengeluaran;
+endif
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data sesuai jenis transaksi;
+if (Data valid?) then (ya)
+  :Menyimpan transaksi;
+  :Menampilkan pesan transaksi berhasil dicatat;
+else (tidak)
+  :Menampilkan pesan kesalahan;
+  -> Memilih jenis, kategori, jumlah dan tanggal
+endif
+stop
+
+=== Hapus Transaksi Keuangan
+|Admin|
+start
+:Klik tombol Hapus pada transaksi;
+|Sistem|
+:Menampilkan konfirmasi hapus;
+|Admin|
+if (Yakin menghapus?) then (ya)
+  |Sistem|
+  :Menghapus transaksi;
+  :Memperbarui statistik keuangan;
+  :Menampilkan pesan transaksi berhasil dihapus;
+else (tidak)
+  :Membatalkan penghapusan;
+endif
+stop
+
+=== Export Laporan Keuangan PDF
+|Admin|
+start
+:Memilih filter kategori, jenis dan periode;
+:Klik tombol Export PDF;
+|Sistem|
+:Mengambil transaksi sesuai filter;
+:Mengambil profil yayasan;
+:Membuat file PDF laporan keuangan;
+|Admin|
+:Mengunduh file PDF;
+stop
+
+=== Ubah Profil Yayasan
+|Admin|
+start
+:Membuka menu Setting;
+|Sistem|
+:Menampilkan form pengaturan umum;
+|Admin|
+:Mengubah kontak, alamat dan profil yayasan;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+:Menyimpan setiap nilai pengaturan;
+:Menampilkan pesan pengaturan berhasil disimpan;
+stop
+
+=== Kelola Rekening Bank
+|Admin|
+start
+:Membuka menu Setting bagian Rekening;
+if (Aksi?) then (tambah)
+  :Mengisi nama bank, nomor rekening dan atas nama;
+  |Sistem|
+  :Validasi dan menyimpan rekening;
+  :Menampilkan pesan rekening berhasil ditambahkan;
+else (hapus)
+  |Admin|
+  :Klik tombol Hapus pada rekening;
+  |Sistem|
+  :Menghapus rekening;
+  :Menampilkan pesan rekening berhasil dihapus;
+endif
+stop
+
+=== Ubah Password Admin
+|Admin|
+start
+:Mengisi password saat ini dan password baru;
+:Klik tombol Simpan;
+|Sistem|
+:Validasi data;
+if (Password saat ini benar?) then (ya)
+  :Menyimpan hash password baru;
+  :Menampilkan pesan profil berhasil diperbarui;
+else (tidak)
+  :Menampilkan pesan password tidak sesuai;
+  -> Mengisi password saat ini dan password baru
+endif
+stop
+
+=== Lihat Beranda
+|Pengunjung|
+start
+:Membuka halaman beranda;
+|Website|
+fork
+  :Mengambil foto kegiatan;
+fork again
+  :Mengambil katalog program;
+fork again
+  :Menghitung transparansi donasi;
+end fork
+:Menampilkan profil, program, galeri dan info donasi;
+|Pengunjung|
+:Melihat informasi yayasan;
+stop
+
+=== Lihat Daftar Artikel
+|Pengunjung|
+start
+:Membuka menu Artikel;
+:Memilih kategori, kata kunci atau tanggal;
+|Website|
+:Mengambil artikel terbit sesuai filter;
+if (Artikel ditemukan?) then (ya)
+  :Menampilkan daftar artikel;
+else (tidak)
+  :Menampilkan pesan artikel tidak ditemukan;
+endif
+|Pengunjung|
+:Melihat hasil pencarian;
+stop
+
+=== Baca Detail Artikel
+|Pengunjung|
+start
+:Mengklik salah satu artikel;
+|Website|
+:Mencari artikel berdasarkan slug;
+:Mengambil artikel terkait;
+:Menampilkan isi artikel dan artikel terkait;
+|Pengunjung|
+:Membaca artikel;
+stop
+
+=== Lihat Galeri Kegiatan
+|Pengunjung|
+start
+:Membuka menu Galeri;
+:Memilih kategori foto;
+|Website|
+:Mengambil foto sesuai kategori;
+:Menampilkan grid foto kegiatan;
+|Pengunjung|
+:Melihat dokumentasi kegiatan;
+stop

@@ -1,160 +1,76 @@
 // frontend/src/components/DragDropArea.jsx
 import React, { useRef, useState } from 'react';
-import { UploadCloud, FileType, CheckCircle, XCircle } from 'lucide-react';
 
+// Drop zone for the .sql file. The dashed edge is the usual "drop here" cue;
+// the button inside makes it work by keyboard and touch too.
 export default function DragDropArea({ onFileSelected, isLoading, file }) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef(null);
 
-  const handleDragEnter = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isLoading) setIsDragActive(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
-  };
-
-  const handleDragOver = (e) => {
+  const stop = (e) => {
     e.preventDefault();
     e.stopPropagation();
   };
 
-  const processFile = (file) => {
+  const processFile = (picked) => {
     setError('');
-    const fileName = file.name.toLowerCase();
-    
-    // Check if file has .sql extension
-    if (!fileName.endsWith('.sql')) {
-      setError('Please upload a valid .sql file.');
+    if (!picked.name.toLowerCase().endsWith('.sql')) {
+      setError(`"${picked.name}" bukan file .sql. Pilih file dengan akhiran .sql.`);
       return;
     }
-
-    onFileSelected(file);
+    onFileSelected(picked);
   };
 
   const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    stop(e);
     setIsDragActive(false);
-    
-    if (isLoading) return;
-
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      if (e.dataTransfer.files.length > 1) {
-        setError('Please upload only one file at a time.');
-        return;
-      }
-      processFile(e.dataTransfer.files[0]);
-      e.dataTransfer.clearData();
+    if (isLoading || !e.dataTransfer.files?.length) return;
+    if (e.dataTransfer.files.length > 1) {
+      setError('Tarik satu file saja.');
+      return;
     }
+    processFile(e.dataTransfer.files[0]);
   };
 
   const handleChange = (e) => {
-    e.preventDefault();
-    if (isLoading) return;
-    
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
-    }
-  };
-
-  const onButtonClick = () => {
-    if (!isLoading) {
-      inputRef.current?.click();
-    }
+    if (e.target.files?.length) processFile(e.target.files[0]);
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto my-8">
-      <div 
-        className={`relative group rounded-3xl p-1 transition-all duration-500
-          ${isDragActive ? 'bg-gradient-to-r from-blue-500 to-indigo-500' : 'bg-white/5 hover:bg-white/10'}
-          ${isLoading ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}
-        `}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
+    <div>
+      <div
+        onDragEnter={(e) => { stop(e); if (!isLoading) setIsDragActive(true); }}
+        onDragOver={stop}
+        onDragLeave={(e) => { stop(e); setIsDragActive(false); }}
         onDrop={handleDrop}
-        onClick={onButtonClick}
+        className={`rounded-md border-2 border-dashed px-4 py-8 text-center
+          ${isDragActive ? 'border-accent bg-desk' : 'border-edge'}`}
       >
-        <div className={`
-          glass-card rounded-[22px] flex flex-col items-center justify-center p-12 text-center h-80
-          transition-all duration-300
-          ${isDragActive ? 'border-transparent scale-[0.99] bg-dark-800/80' : 'border-white/10 hover:border-blue-500/50'}
-        `}>
-          <input
-            ref={inputRef}
-            type="file"
-            className="hidden"
-            accept=".sql"
-            onChange={handleChange}
-            disabled={isLoading}
-          />
-          
-          <div className="relative mb-6">
-            <div className={`absolute inset-0 bg-blue-500 blur-2xl rounded-full transition-opacity duration-500
-              ${isDragActive ? 'opacity-40' : 'opacity-0 group-hover:opacity-20'}
-            `} />
-            
-            {!file ? (
-              <UploadCloud 
-                size={80} 
-                className={`relative z-10 transition-transform duration-500 
-                  ${isDragActive ? 'text-blue-400 scale-110 -translate-y-2 animate-float' : 'text-gray-400 group-hover:text-blue-400 group-hover:scale-105 group-hover:-translate-y-1'}
-                `} 
-              />
-            ) : (
-              <div className="relative z-10">
-                <FileType size={80} className="text-blue-400" />
-                <div className="absolute -bottom-2 -right-2 bg-gradient-to-br from-green-400 to-emerald-600 rounded-full p-1 shadow-lg ring-4 ring-dark-800">
-                  <CheckCircle size={20} className="text-white bg-transparent rounded-full" />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {!file ? (
-            <div className="space-y-3">
-              <h3 className="text-2xl font-semibold text-white tracking-tight">
-                {isDragActive ? 'Drop your SQL file here' : 'Select or drag SQL file'}
-              </h3>
-              <p className="text-gray-400 text-base max-w-[280px] mx-auto leading-relaxed">
-                Upload your <span className="text-blue-400 font-medium">.sql</span> file containing CREATE TABLE statements to generate an ERD.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4 animate-fade-in w-full">
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-xl font-medium text-white truncate max-w-sm" title={file.name}>
-                  {file.name}
-                </p>
-                <div className="px-3 py-1 bg-white/10 rounded-full border border-white/5">
-                  <span className="text-sm text-gray-400 whitespace-nowrap">
-                    {(file.size / 1024).toFixed(1)} KB
-                  </span>
-                </div>
-              </div>
-              {!isLoading && (
-                <p className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
-                  Click to choose a different file
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        {file ? (
+          <>
+            <p className="font-medium break-all">{file.name}</p>
+            <p className="mt-1 text-sm text-muted">{(file.size / 1024).toFixed(1)} KB</p>
+          </>
+        ) : (
+          <>
+            <p className="font-medium">{isDragActive ? 'Lepas file di sini' : 'Tarik file .sql ke sini'}</p>
+            <p className="mt-1 text-sm text-muted">atau</p>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={isLoading}
+          className="mt-3 min-h-[44px] px-4 rounded-md border border-edge text-sm font-medium hover:bg-desk disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {file ? 'Ganti file' : 'Pilih file .sql'}
+        </button>
+        <input ref={inputRef} type="file" accept=".sql" className="sr-only" tabIndex={-1} onChange={handleChange} />
       </div>
 
-      {/* Error Message */}
       {error && (
-        <div className="mt-4 flex items-center justify-center gap-2 text-red-400 bg-red-400/10 border border-red-400/20 py-3 px-4 rounded-2xl animate-fade-in">
-          <XCircle size={18} />
-          <p className="text-sm font-medium">{error}</p>
-        </div>
+        <p role="alert" className="mt-3 rounded-md bg-danger-bg px-4 py-3 text-sm text-danger">{error}</p>
       )}
     </div>
   );

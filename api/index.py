@@ -1,12 +1,14 @@
 # backend/main.py
 """
-FastAPI application — POST /api/generate endpoint
-Accepts .sql file upload, returns .drawio XML for download.
+FastAPI application
+  • POST /api/generate — .sql file upload → .drawio (ERD + class diagram) download
+  • POST /api/uml      — UML text (sequence, …) → JSON with the .drawio XML, pages and line errors
 """
 
 from fastapi import FastAPI, File, HTTPException, UploadFile  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from fastapi.responses import Response  # type: ignore
+from pydantic import BaseModel  # type: ignore
 
 import sys
 import os
@@ -14,6 +16,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from sql_parser import parse_sql  # type: ignore
 from generator import generate_drawio_xml  # type: ignore
+from uml import DIAGRAM_BUILDERS, generate_uml  # type: ignore
 
 app = FastAPI(title='SQL to ERD Generator')
 
@@ -74,3 +77,22 @@ async def generate_erd(file: UploadFile = File(...)):
             'Content-Disposition': f'attachment; filename="{output_filename}"',
         },
     )
+
+
+class UmlRequest(BaseModel):
+    type: str
+    text: str
+
+
+@app.post('/api/uml')
+async def generate_uml_diagram(request: UmlRequest):
+    """Turn UML text (one diagram per `=== Name` block) into a multi-page .drawio file."""
+    if request.type not in DIAGRAM_BUILDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f'Jenis diagram "{request.type}" belum didukung.',
+        )
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail='Teks diagram masih kosong.')
+
+    return generate_uml(request.type, request.text)

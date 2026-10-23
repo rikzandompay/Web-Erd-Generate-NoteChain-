@@ -126,6 +126,7 @@ export default function GuideMode({ onOpenMode }) {
           <ul className="m-0 list-disc space-y-1 pl-5">
             <li>Persegi panjang adalah entitas, oval adalah atribut, belah ketupat adalah relasi.</li>
             <li>Atribut primary key digaris bawah, atribut foreign key dicetak miring.</li>
+            <li>Nama di dalam belah ketupat dipilih dari peran tabel yang dirujuk: tabel kategori <em>mencakup</em>, supplier <em>memasok</em>, users <em>mencatat</em>, produk atau barang <em>tercatat pada</em>, dan seterusnya. Tabel yang tidak dikenali memakai <em>memiliki</em>. Untuk menentukan nama sendiri, tulis komentar di kolom foreign key: <code className="font-mono">id_supplier INT, -- @rel: memasok</code>.</li>
             <li>Label <strong>N</strong> ada di sisi tabel yang memegang foreign key, <strong>1</strong> di sisi tabel yang dirujuk. Semua relasi dibaca N ke 1; jenis 1 ke 1 tidak dideteksi.</li>
             <li>Di Class Diagram, setiap tabel menjadi kelas dengan method create, read, update, delete, dan satu method untuk tiap tabel yang berhubungan.</li>
           </ul>

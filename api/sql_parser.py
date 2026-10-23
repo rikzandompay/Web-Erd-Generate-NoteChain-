@@ -200,6 +200,10 @@ def parse_sql(sql: str) -> dict[str, Any]:
                     _add_comment(column, comments[n])
                 columns.append(column)
 
+        # Comments are all attached by now (one after a comma lands on the column before it)
+        for col in columns:
+            _split_relation_label(col)
+
         # Mark standalone PKs
         for col in columns:
             if col['name'] in primary_keys:
@@ -235,6 +239,17 @@ def parse_sql(sql: str) -> dict[str, Any]:
         raise ValueError('No valid CREATE TABLE statements found in SQL file.')
 
     return {'tables': tables, 'relations': relations}
+
+
+_REL_TAG = re.compile(r'@rel\s*:\s*(.+?)\s*(?=@\w+\s*:|$)', re.IGNORECASE)
+
+
+def _split_relation_label(column: dict[str, Any]) -> None:
+    """`-- @rel: memasok` in a column's comment names that column's relationship; the rest stays the comment."""
+    tag = _REL_TAG.search(column['comment'])
+    column['rel_label'] = tag.group(1).strip() if tag else ''
+    if tag:
+        column['comment'] = (column['comment'][:tag.start()] + column['comment'][tag.end():]).strip()
 
 
 def _add_comment(column: dict[str, Any], text: str) -> None:

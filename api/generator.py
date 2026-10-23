@@ -255,6 +255,8 @@ def build_erd_page(schema: dict[str, Any]) -> ET.Element:
                  if r['from_table'] in known and r['to_table'] in known]
 
     grid = assign_grid(names, relations)
+    custom_names = {(t['name'], c['name']): c['rel_label']
+                    for t in tables for c in t.get('columns', []) if c.get('rel_label')}
 
     # ── 1. Plan diamonds, lines and lanes on the grid ───────────────────────
     diamond_gaps: dict[str, set[int]] = {'x': set(), 'y': set()}
@@ -332,7 +334,9 @@ def build_erd_page(schema: dict[str, Any]) -> ET.Element:
         occupied.append(rect)
         centre = (rect[0] + DIAMOND_W / 2, rect[1] + DIAMOND_H / 2)
         diamond_id = page.vertex(
-            _relation_label(plan.rel['from_table'], plan.rel['to_table']), DIAMOND_STYLE, rect)
+            _relation_label(plan.rel['from_table'], plan.rel['to_table'],
+                            custom_names.get((plan.rel['from_table'], plan.rel['from_column']), '')),
+            DIAMOND_STYLE, rect)
 
         # from_table holds the FK → many side (N); to_table is referenced → one side (1)
         for link in plan.links:
@@ -455,8 +459,8 @@ def _attr_style(is_pk: bool, is_fk: bool) -> str:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-# Kata kerja mapping: if from_table contains these keywords, use the mapped verb.
-# Otherwise fallback to a generic verb based on the relationship direction.
+# Kata kerja mapping: if the child table (the one holding the FK) contains one of these
+# keywords, the diamond says this verb. Tried first because it is the most specific.
 _VERB_MAP: dict[str, str] = {
     'detail':       'memiliki',
     'transaksi':    'melakukan',
@@ -479,29 +483,44 @@ _VERB_MAP: dict[str, str] = {
     'reservasi':    'mereservasi',
 }
 
+# What the referenced (parent) table does to the child rows, by the kind of table it is.
+# Read as "<parent> <verb> <child>": kategori mencakup produk, supplier memasok barang_masuk.
+_PARENT_ROLE: list[tuple[tuple[str, ...], str]] = [
+    (('kategori', 'jenis', 'golongan', 'klasifikasi', 'tipe'), 'mencakup'),
+    (('supplier', 'pemasok', 'vendor', 'distributor'), 'memasok'),
+    (('users', 'user', 'pengguna', 'petugas', 'admin', 'karyawan', 'pegawai', 'kasir', 'operator'), 'mencatat'),
+    (('pelanggan', 'customer', 'pembeli', 'konsumen', 'anggota', 'member', 'peminjam', 'donatur',
+      'siswa', 'mahasiswa', 'pasien', 'peserta'), 'melakukan'),
+    (('dosen', 'guru', 'pengajar', 'instruktur'), 'mengajar'),
+    (('produk', 'barang', 'buku', 'obat', 'menu', 'snack', 'item', 'bahan', 'aset'), 'tercatat pada'),
+    (('gudang', 'rak', 'lokasi'), 'menyimpan'),
+    (('kelas', 'jurusan', 'prodi', 'departemen', 'divisi', 'cabang', 'toko'), 'memiliki'),
+]
 
-def _relation_label(from_table: str, to_table: str) -> str:
+
+def _relation_label(from_table: str, to_table: str, custom: str = '') -> str:
     """
-    Derive an Indonesian verb (kata kerja) for the relationship diamond
-    based on from_table and to_table names.
+    The verb written in a relationship diamond, in Indonesian, read as
+    "<to_table> <verb> <from_table>" (the referenced table acts on the table holding the FK).
 
-    Strategy:
-      1. Check if from_table name contains a known keyword → use mapped verb.
-      2. If from_table is a detail/junction table (nama mengandung 'detail') → 'memiliki'.
-      3. Fallback → 'memiliki'.
+    Order of preference:
+      1. A name the author gave in the SQL (`-- @rel: memasok` on the FK column).
+      2. A keyword in the child table's name (pemesanan → memesan).
+      3. The kind of table the parent is (supplier → memasok, kategori → mencakup).
+      4. A keyword in the parent table's name.
+      5. 'memiliki'.
     """
-    ft_lower = from_table.lower()
-    tt_lower = to_table.lower()
+    if custom.strip():
+        return custom.strip()
+    child, parent = from_table.lower(), to_table.lower()
 
-    # 1. Check from_table for known keywords
     for keyword, verb in _VERB_MAP.items():
-        if keyword in ft_lower:
+        if keyword in child:
             return verb
-
-    # 2. Check to_table for known keywords
+    for keywords, verb in _PARENT_ROLE:
+        if any(k in parent for k in keywords):
+            return verb
     for keyword, verb in _VERB_MAP.items():
-        if keyword in tt_lower:
+        if keyword in parent:
             return verb
-
-    # 3. Fallback – generic verb
     return 'memiliki'

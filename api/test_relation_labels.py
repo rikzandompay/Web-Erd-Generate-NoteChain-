@@ -87,3 +87,16 @@ def test_a_custom_name_wins_over_every_rule():
 def test_columns_without_the_tag_have_an_empty_name():
     schema = parse_sql('CREATE TABLE a (x INT, -- catatan biasa\n y INT);')
     assert [c['rel_label'] for c in schema['tables'][0]['columns']] == ['', '']
+
+
+# ── Layout: a table that links two others sits between them ──────────────────
+
+def test_cycle_of_tables_is_packed_without_long_lines():
+    """users links barang_masuk and barang_keluar, which both link produk_snack: a four-table loop."""
+    from layout import assign_grid  # type: ignore
+    schema = parse_sql(SNACK_SQL)
+    grid = assign_grid([t['name'] for t in schema['tables']], schema['relations'])
+    for rel in schema['relations']:
+        (c1, r1), (c2, r2) = grid[rel['from_table']], grid[rel['to_table']]
+        assert abs(c1 - c2) + abs(r1 - r2) == 1, (rel['from_table'], rel['to_table'])
+    assert len(set(grid.values())) == len(grid)                      # nobody shares a cell

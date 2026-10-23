@@ -106,7 +106,7 @@ def assign_grid(names: list[str], relations: list[dict[str, Any]], singles: str 
     # about as wide as a landscape page of all tables would be, then a new shelf
     shapes = []
     for comp in connected:
-        placed = _place_component(comp, adj, order_idx, above)
+        placed = _refine(_place_component(comp, adj, order_idx, above), adj, above)
         min_c = min(c for c, _ in placed.values())
         min_r = min(r for _, r in placed.values())
         shapes.append({n: (c - min_c, r - min_r) for n, (c, r) in placed.items()})
@@ -171,6 +171,81 @@ def _place_component(comp: list[str], adj: dict[str, list[str]], order_idx: dict
         cell = min(sorted(cands), key=lambda c: _cell_score(c, anchors, taken, wanted))
         placed[node] = cell
         taken.add(cell)
+    return placed
+
+
+# ── Layout refinement ────────────────────────────────────────────────────────
+
+def _cells_between(a: tuple[int, int], b: tuple[int, int]) -> list[tuple[int, int]]:
+    """Grid cells strictly between two cells on the same row or column."""
+    (c1, r1), (c2, r2) = a, b
+    if r1 == r2:
+        return [(c, r1) for c in range(min(c1, c2) + 1, max(c1, c2))]
+    return [(c1, r) for r in range(min(r1, r2) + 1, max(r1, r2))]
+
+
+def _line_cost(a: tuple[int, int], b: tuple[int, int], occupied: set[tuple[int, int]]) -> float:
+    """How awkward it is to join two cells: far, elbowed or running through another table."""
+    dc, dr = abs(a[0] - b[0]), abs(a[1] - b[1])
+    cost = 10.0 * (dc + dr)
+    if not (dc and dr):
+        return cost + (40 if any(c in occupied for c in _cells_between(a, b)) else 0)
+    cost += 4
+    for corner in ((b[0], a[1]), (a[0], b[1])):          # an elbow needs a free corner and free legs
+        if corner not in occupied and not any(c in occupied for c in
+                                              _cells_between(a, corner) + _cells_between(corner, b)):
+            return cost
+    return cost + 40
+
+
+def _layout_cost(placed: dict[str, tuple[int, int]], adj: dict[str, list[str]],
+                 above: set[tuple[str, str]]) -> float:
+    occupied = set(placed.values())
+    cost = 0.0
+    for name, cell in placed.items():
+        for other in adj[name]:
+            if name < other and other in placed:
+                cost += _line_cost(cell, placed[other], occupied)
+    for upper, lower in above:
+        if upper in placed and lower in placed and placed[upper][1] >= placed[lower][1]:
+            cost += 15                                   # parent should sit above its subclass
+    cs, rs = [c for c, _ in occupied], [r for _, r in occupied]
+    cx, cy = sum(cs) / len(cs), sum(rs) / len(rs)       # tie-breaker: stay compact
+    return cost + 0.5 * sum(abs(c - cx) + abs(r - cy) for c, r in occupied)
+
+
+def _refine(placed: dict[str, tuple[int, int]], adj: dict[str, list[str]],
+            above: set[tuple[str, str]]) -> dict[str, tuple[int, int]]:
+    """
+    Greedy placement never looks back, so a table that links two others can end up far
+    from one of them. Try moving each table to a free cell, or swapping it with another,
+    and keep every change that makes the whole layout cheaper, until nothing improves.
+    """
+    placed = dict(placed)
+    best = _layout_cost(placed, adj, above)
+    names = sorted(placed, key=lambda n: (-len(adj[n]), n))
+    for _ in range(30):
+        improved = False
+        for name in names:
+            cs = [c for c, _ in placed.values()]
+            rs = [r for _, r in placed.values()]
+            origin = placed[name]
+            owner = {cell: other for other, cell in placed.items()}
+            options = [(c, r) for c in range(min(cs) - 1, max(cs) + 2) for r in range(min(rs) - 1, max(rs) + 2)
+                       if (c, r) != origin]
+            winner, winner_cost = None, best - 1e-9
+            for cell in options:
+                trial = dict(placed)
+                trial[name] = cell
+                if cell in owner:
+                    trial[owner[cell]] = origin          # swap places with whoever is there
+                cost = _layout_cost(trial, adj, above)
+                if cost < winner_cost:
+                    winner, winner_cost = trial, cost
+            if winner is not None:
+                placed, best, improved = winner, winner_cost, True
+        if not improved:
+            break
     return placed
 
 

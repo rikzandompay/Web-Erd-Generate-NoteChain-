@@ -13,7 +13,7 @@ const SECTIONS = [
 const TYPE_NOTES = {
   usecase: {
     title: 'Use case diagram',
-    text: 'Use case digambar sebagai elips di dalam kotak system, semuanya selebar sama. Aktor biasa ada di kiri; aktor yang ditandai <<sekunder>> (misalnya sistem pembayaran) ada di kanan. Garis include, extend, dan generalisasi berjalan di luar kolom elips, jadi tidak memotong use case lain.',
+    text: 'Use case dikelompokkan dengan pola Input, Proses, Output: tulis [Input], [Proses], dan [Output] di dalam blok system, lalu use case di bawah labelnya. Kelompok digambar berurutan dari atas ke bawah dengan garis pemisah putus-putus. Setiap use case cukup dihubungkan ke aktornya; include dan extend tidak dipakai. Aktor biasa ada di kiri, aktor yang ditandai <<sekunder>> (misalnya sistem pembayaran) ada di kanan.',
   },
   sequence: {
     title: 'Sequence diagram',
@@ -126,7 +126,7 @@ export default function GuideMode({ onOpenMode }) {
           <ul className="m-0 list-disc space-y-1 pl-5">
             <li>Persegi panjang adalah entitas, oval adalah atribut, belah ketupat adalah relasi.</li>
             <li>Atribut primary key digaris bawah, atribut foreign key dicetak miring.</li>
-            <li>Nama di dalam belah ketupat dipilih dari peran tabel yang dirujuk: tabel kategori <em>mencakup</em>, supplier <em>memasok</em>, users <em>mencatat</em>, produk atau barang <em>tercatat pada</em>, dan seterusnya. Tabel yang tidak dikenali memakai <em>memiliki</em>. Untuk menentukan nama sendiri, tulis komentar di kolom foreign key: <code className="font-mono">id_supplier INT, -- @rel: memasok</code>.</li>
+            <li>Nama di dalam belah ketupat dibuat dari dua petunjuk. Pertama, nama kolom foreign key: <code className="font-mono">penulis_id</code> menjadi <em>menulis</em>, <code className="font-mono">diverifikasi_oleh</code> menjadi <em>memverifikasi</em>, <code className="font-mono">created_by</code> menjadi <em>membuat</em>. Kalau kolomnya biasa saja, dari jenis kedua tabel: kategori <em>mengelompokkan</em> produk, supplier <em>memasok</em> barang masuk, donatur <em>memberikan</em> donasi, rekening <em>menerima</em> donasi, donasi <em>tercatat sebagai</em> transaksi, kegiatan <em>dilengkapi</em> foto kegiatan. <em>Memiliki</em> hanya dipakai kalau tidak ada petunjuk sama sekali. Untuk menentukan nama sendiri, tulis komentar di kolom foreign key: <code className="font-mono">id_supplier INT, -- @rel: memasok</code>.</li>
             <li>Label <strong>N</strong> ada di sisi tabel yang memegang foreign key, <strong>1</strong> di sisi tabel yang dirujuk. Semua relasi dibaca N ke 1; jenis 1 ke 1 tidak dideteksi.</li>
             <li>Di Class Diagram, setiap tabel menjadi kelas dengan method create, read, update, delete, dan satu method untuk tiap tabel yang berhubungan.</li>
           </ul>

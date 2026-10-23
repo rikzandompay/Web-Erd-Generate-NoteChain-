@@ -27,6 +27,7 @@ from layout import (  # type: ignore
     assign_grid, build_mxfile, edge_style, find_free_spot, h_side, half_steps,
     port_point, side_port, snap, toward,
 )
+from relation_names import diamond_text, relation_label  # type: ignore
 
 # ── Layout constants ─────────────────────────────────────────────────────────
 ENTITY_MIN_W = 120      # entity rectangle width (grows with long names / many ports)
@@ -34,7 +35,7 @@ ENTITY_H = 40           # entity rectangle height
 ATTR_MIN_W = 80         # attribute ellipse width range
 ATTR_MAX_W = 160
 ATTR_H = 30             # attribute ellipse height
-DIAMOND_W = 100         # relationship diamond width
+DIAMOND_W = 120         # relationship diamond width (fits a 14-letter verb such as mengelompokkan)
 DIAMOND_H = 60          # relationship diamond height
 
 CELL_GAP = 60           # smallest space between neighbouring cells
@@ -334,8 +335,9 @@ def build_erd_page(schema: dict[str, Any]) -> ET.Element:
         occupied.append(rect)
         centre = (rect[0] + DIAMOND_W / 2, rect[1] + DIAMOND_H / 2)
         diamond_id = page.vertex(
-            _relation_label(plan.rel['from_table'], plan.rel['to_table'],
-                            custom_names.get((plan.rel['from_table'], plan.rel['from_column']), '')),
+            diamond_text(_relation_label(plan.rel['from_table'], plan.rel['to_table'],
+                                         custom_names.get((plan.rel['from_table'], plan.rel['from_column']), ''),
+                                         plan.rel['from_column'])),
             DIAMOND_STYLE, rect)
 
         # from_table holds the FK → many side (N); to_table is referenced → one side (1)
@@ -459,68 +461,7 @@ def _attr_style(is_pk: bool, is_fk: bool) -> str:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-# Kata kerja mapping: if the child table (the one holding the FK) contains one of these
-# keywords, the diamond says this verb. Tried first because it is the most specific.
-_VERB_MAP: dict[str, str] = {
-    'detail':       'memiliki',
-    'transaksi':    'melakukan',
-    'pemesanan':    'memesan',
-    'pesanan':      'memesan',
-    'order':        'memesan',
-    'pembayaran':   'membayar',
-    'payment':      'membayar',
-    'penjualan':    'menjual',
-    'pembelian':    'membeli',
-    'pengiriman':   'mengirim',
-    'pendaftaran':  'mendaftar',
-    'penilaian':    'menilai',
-    'review':       'menilai',
-    'pemakaian':    'memakai',
-    'penggunaan':   'menggunakan',
-    'penugasan':    'menugaskan',
-    'enrollment':   'mendaftar',
-    'booking':      'memesan',
-    'reservasi':    'mereservasi',
-}
 
-# What the referenced (parent) table does to the child rows, by the kind of table it is.
-# Read as "<parent> <verb> <child>": kategori mencakup produk, supplier memasok barang_masuk.
-_PARENT_ROLE: list[tuple[tuple[str, ...], str]] = [
-    (('kategori', 'jenis', 'golongan', 'klasifikasi', 'tipe'), 'mencakup'),
-    (('supplier', 'pemasok', 'vendor', 'distributor'), 'memasok'),
-    (('users', 'user', 'pengguna', 'petugas', 'admin', 'karyawan', 'pegawai', 'kasir', 'operator'), 'mencatat'),
-    (('pelanggan', 'customer', 'pembeli', 'konsumen', 'anggota', 'member', 'peminjam', 'donatur',
-      'siswa', 'mahasiswa', 'pasien', 'peserta'), 'melakukan'),
-    (('dosen', 'guru', 'pengajar', 'instruktur'), 'mengajar'),
-    (('produk', 'barang', 'buku', 'obat', 'menu', 'snack', 'item', 'bahan', 'aset'), 'tercatat pada'),
-    (('gudang', 'rak', 'lokasi'), 'menyimpan'),
-    (('kelas', 'jurusan', 'prodi', 'departemen', 'divisi', 'cabang', 'toko'), 'memiliki'),
-]
-
-
-def _relation_label(from_table: str, to_table: str, custom: str = '') -> str:
-    """
-    The verb written in a relationship diamond, in Indonesian, read as
-    "<to_table> <verb> <from_table>" (the referenced table acts on the table holding the FK).
-
-    Order of preference:
-      1. A name the author gave in the SQL (`-- @rel: memasok` on the FK column).
-      2. A keyword in the child table's name (pemesanan → memesan).
-      3. The kind of table the parent is (supplier → memasok, kategori → mencakup).
-      4. A keyword in the parent table's name.
-      5. 'memiliki'.
-    """
-    if custom.strip():
-        return custom.strip()
-    child, parent = from_table.lower(), to_table.lower()
-
-    for keyword, verb in _VERB_MAP.items():
-        if keyword in child:
-            return verb
-    for keywords, verb in _PARENT_ROLE:
-        if any(k in parent for k in keywords):
-            return verb
-    for keyword, verb in _VERB_MAP.items():
-        if keyword in parent:
-            return verb
-    return 'memiliki'
+def _relation_label(from_table: str, to_table: str, custom: str = '', column: str = '') -> str:
+    """The diamond's verb, read as "<to_table> <verb> <from_table>"; see relation_names.py."""
+    return relation_label(from_table, to_table, custom, column)

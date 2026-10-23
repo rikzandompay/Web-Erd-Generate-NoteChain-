@@ -81,7 +81,7 @@ def test_actors_and_use_cases_used_in_relations_are_declared_implicitly():
 
 def test_parser_reports_bad_lines_and_unclosed_system():
     _, errors = parse_usecase('x', list(enumerate(['system A {', '(Satu)', 'apa ini', 'system B {'], start=1)))
-    assert errors == [(3, 'Baris tidak dikenali: "apa ini". Contoh: actor Admin, (Login), Admin --> (Login)'),
+    assert errors == [(3, 'Baris tidak dikenali: "apa ini". Contoh: actor Admin, [Input], (Input Data), Admin --> (Input Data)'),
                       (4, 'Hanya satu blok system per halaman'),
                       (1, "blok system belum ditutup dengan '}'")]
 
@@ -187,3 +187,84 @@ def test_dependency_between_an_actor_and_a_use_case_is_drawn_straight():
     root = ET.fromstring(result['xml']).find('diagram/mxGraphModel/root')
     assert len([c for c in root if c.get('edge') == '1']) == 2
     assert not [p for c in root if c.get('edge') == '1' for p in c.findall('mxGeometry/Array/mxPoint')]
+
+
+# ── Input → Proses → Output groups ───────────────────────────────────────────
+
+IPO = """\
+=== Sistem Donasi
+system Sistem Donasi {
+  [Input]
+  (Input Data Donatur)
+  (Input Data Donasi)
+  [Proses]
+  (Verifikasi Donasi)
+  (Hitung Total Dana)
+  [Output]
+  (Cetak Laporan Donasi)
+  (Lihat Riwayat Donasi)
+}
+actor Admin
+actor Donatur
+Admin --> (Input Data Donatur)
+Admin --> (Verifikasi Donasi)
+Admin --> (Hitung Total Dana)
+Admin --> (Cetak Laporan Donasi)
+Donatur --> (Input Data Donasi)
+Donatur --> (Lihat Riwayat Donasi)
+"""
+
+
+def _ipo_root():
+    result = generate_uml('usecase', IPO)
+    assert result['errors'] == [] and result['pages'] == ['Sistem Donasi']
+    return ET.fromstring(result['xml']).find('diagram/mxGraphModel/root')
+
+
+def test_groups_are_parsed_in_the_order_written():
+    model, errors = parse_usecase('x', split_pages(IPO)[0][1])
+    assert errors == [] and model.groups == ['Input', 'Proses', 'Output']
+    assert model.group_of['Input Data Donasi'] == 'Input'
+    assert model.group_of['Verifikasi Donasi'] == 'Proses'
+    assert model.group_of['Lihat Riwayat Donasi'] == 'Output'
+
+
+def test_groups_stack_input_then_process_then_output_under_their_labels():
+    root = _ipo_root()
+    _, rects = _cells(root)
+    y = {c.get('value'): rects[c.get('id')][1] for c in root if c.get('vertex') == '1'}
+    labels = [c for c in root if (c.get('style') or '').startswith('text;') and c.get('value') in ('Input', 'Proses', 'Output')]
+    assert [c.get('value') for c in sorted(labels, key=lambda c: y[c.get('value')])] == ['Input', 'Proses', 'Output']
+    assert y['Input'] < y['Input Data Donatur'] < y['Input Data Donasi'] < y['Proses'] < y['Verifikasi Donasi'] \
+        < y['Hitung Total Dana'] < y['Output'] < y['Cetak Laporan Donasi'] < y['Lihat Riwayat Donasi']
+    dividers = [c for c in root if (c.get('style') or '').startswith('line;')]
+    assert len(dividers) == 2 and all('dashed=1' in c.get('style') for c in dividers)
+
+
+def test_labels_and_dividers_stay_inside_the_ellipse_column():
+    root = _ipo_root()
+    _, rects = _cells(root)
+    ellipse = next(rects[c.get('id')] for c in root if (c.get('style') or '').startswith('ellipse'))
+    for c in root:
+        if (c.get('style') or '').startswith(('line;', 'text;')):
+            x, _, w, _ = rects[c.get('id')]
+            assert x == ellipse[0] and w == ellipse[2]          # actor lines end at the ellipse edge, never cross these
+
+
+def test_nothing_inside_the_box_overlaps():
+    root = _ipo_root()
+    _, rects = _cells(root)
+    boundary = next(c.get('id') for c in root if 'container=1' in (c.get('style') or ''))
+    inside = [rects[c.get('id')] for c in root if c.get('parent') == boundary]
+    for a, b in itertools.combinations(inside, 2):
+        assert not (a[0] < b[0] + b[2] and b[0] < a[0] + a[2] and a[1] < b[1] + b[3] and b[1] < a[1] + a[3])
+
+
+def test_without_groups_nothing_changes():
+    root = ET.fromstring(generate_uml('usecase', SAMPLE)['xml']).find('diagram/mxGraphModel/root')
+    assert not [c for c in root if (c.get('style') or '').startswith(('line;', 'text;html=1;align=left'))]
+
+
+def test_use_cases_first_named_in_a_relation_are_not_put_in_a_group():
+    model, errors = parse_usecase('x', list(enumerate(['system S {', '[Input]', '(A)', '}', 'Admin --> (B)'], start=1)))
+    assert errors == [] and model.group_of == {'A': 'Input', 'B': ''}

@@ -4,13 +4,17 @@
 export const EXAMPLES = {
   usecase: `=== Sistem Informasi Perpustakaan
 system Perpustakaan {
+  [Input]
   (Login Petugas)
-  (Kelola Anggota)
-  (Peminjaman Buku)
-  (Pengembalian Buku)
-  (Katalog Pencarian)
+  (Input Data Anggota)
+  (Input Data Buku)
+  [Proses]
+  (Proses Peminjaman Buku)
+  (Proses Pengembalian Buku)
   (Hitung Denda)
-  (Cetak Laporan)
+  [Output]
+  (Cetak Laporan Peminjaman)
+  (Lihat Katalog Buku)
 }
 
 actor Petugas
@@ -18,16 +22,13 @@ actor Anggota
 actor Pembayaran <<sekunder>>
 
 Petugas --> (Login Petugas)
-Petugas --> (Kelola Anggota)
-Petugas --> (Peminjaman Buku)
-Petugas --> (Pengembalian Buku)
-Petugas --> (Cetak Laporan)
-Anggota --> (Katalog Pencarian)
-Anggota --> (Peminjaman Buku)
+Petugas --> (Input Data Anggota)
+Petugas --> (Input Data Buku)
+Petugas --> (Proses Peminjaman Buku)
+Petugas --> (Proses Pengembalian Buku)
+Petugas --> (Cetak Laporan Peminjaman)
+Anggota --> (Lihat Katalog Buku)
 Pembayaran --> (Hitung Denda)
-
-(Peminjaman Buku) ..> (Login Petugas) : <<include>>
-(Pengembalian Buku) ..> (Hitung Denda) : <<extend>>
 `,
   sequence: `=== Edit Data Stok Bahan
 actor Admin
@@ -110,12 +111,12 @@ bahan <|-- bahan_kering
 export const SYNTAX = {
   usecase: [
     ['=== Nama Halaman', 'mulai diagram baru di halaman sendiri'],
-    ['system Nama { (Use Case) }', 'batas sistem berisi use case, satu per baris'],
+    ['system Nama { ... }', 'batas sistem berisi use case, satu per baris'],
+    ['[Input] [Proses] [Output]', 'label kelompok di dalam system; use case di bawahnya masuk kelompok itu'],
+    ['(Input Data Buku)', 'use case, diawali kata kerja'],
     ['actor Admin', 'aktor utama, digambar di kiri'],
     ['actor Bank <<sekunder>>', 'aktor sekunder atau sistem eksternal, digambar di kanan'],
-    ['Admin --> (Login)', 'asosiasi aktor dengan use case'],
-    ['(A) ..> (B) : <<include>>', 'include atau extend, garis putus-putus berpanah'],
-    ['Induk <|-- Anak', 'generalisasi aktor atau use case'],
+    ['Admin --> (Input Data Buku)', 'hubungan aktor dengan use case'],
   ],
   sequence: [
     ['=== Nama Halaman', 'mulai diagram baru di halaman sendiri'],

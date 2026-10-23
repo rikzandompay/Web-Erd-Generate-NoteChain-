@@ -4,7 +4,7 @@ import axios from 'axios';
 import { apiErrorMessage } from '../drawio';
 
 const SUGGESTIONS = {
-  usecase: 'Buatkan use case diagram untuk sistem peminjaman buku perpustakaan dengan petugas dan anggota',
+  usecase: 'Buatkan use case diagram sistem peminjaman buku perpustakaan dengan petugas dan anggota',
   sequence: 'Buatkan sequence diagram untuk admin menambah data donatur',
   activity: 'Buatkan activity diagram login admin dengan validasi',
   class: 'Buatkan class diagram untuk donatur dan transaksi keuangan',

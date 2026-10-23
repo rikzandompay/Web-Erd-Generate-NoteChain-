@@ -66,3 +66,16 @@ def test_new_request_must_not_drag_the_editor_text_along():
     assert 'diagram BARU' in BASE and 'abaikan teks editor sepenuhnya' in BASE
     assert 'HANYA diagram baru' in BASE
     assert 'LENGKAP' in BASE and 'mengubah, menambah' in BASE        # revisions still return the whole text
+
+
+def test_use_cases_follow_input_process_output_without_include_or_extend():
+    usecase = FORMATS['usecase']
+    example = _example('usecase')
+    assert example.index('[Input]') < example.index('[Proses]') < example.index('[Output]')
+    assert '..>' not in example and '<<include>>' not in usecase and '<<extend>>' not in usecase
+    assert 'JANGAN memakai include atau extend' in usecase
+    from usecase import parse_usecase  # type: ignore
+    from uml import split_pages  # type: ignore
+    model, errors = parse_usecase('x', split_pages(example)[0][1])
+    assert errors == [] and model.groups == ['Input', 'Proses', 'Output']
+    assert all(r.kind == 'assoc' for r in model.rels)

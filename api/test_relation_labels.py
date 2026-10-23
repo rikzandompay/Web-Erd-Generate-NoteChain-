@@ -33,19 +33,19 @@ CREATE TABLE barang_keluar (
 
 def _diamond_labels(sql):
     root = ET.fromstring(generate_drawio_xml(parse_sql(sql))).find("diagram[@name='ERD']/mxGraphModel/root")
-    return sorted(c.get('value') for c in root if (c.get('style') or '').startswith('rhombus'))
+    return sorted(c.get('value').replace('<br>', ' ') for c in root if (c.get('style') or '').startswith('rhombus'))
 
 
 def test_tables_without_known_keywords_no_longer_all_say_memiliki():
     labels = _diamond_labels(SNACK_SQL)
     assert len(labels) == 6
     assert labels.count('memiliki') == 0
-    assert set(labels) == {'mencatat', 'mencakup', 'memasok', 'tercatat pada'}
+    assert set(labels) == {'mencatat', 'mengelompokkan', 'memasok', 'tercatat pada'}
     assert labels.count('mencatat') == 2 and labels.count('tercatat pada') == 2
 
 
 def test_each_relation_reads_as_parent_verb_child():
-    assert _relation_label('produk_snack', 'kategori') == 'mencakup'
+    assert _relation_label('produk_snack', 'kategori') == 'mengelompokkan'
     assert _relation_label('barang_masuk', 'supplier') == 'memasok'
     assert _relation_label('barang_masuk', 'users') == 'mencatat'
     assert _relation_label('barang_keluar', 'produk_snack') == 'tercatat pada'
@@ -53,10 +53,10 @@ def test_each_relation_reads_as_parent_verb_child():
     assert _relation_label('jadwal', 'dosen') == 'mengajar'
 
 
-def test_child_keyword_still_wins_over_the_parent_role():
+def test_transaction_tables_name_their_relations():
     assert _relation_label('pemesanan', 'pelanggan') == 'memesan'
-    assert _relation_label('detail_pemesanan', 'pemesanan') == 'memiliki'
-    assert _relation_label('pembayaran', 'pemesanan') == 'membayar'
+    assert _relation_label('detail_pemesanan', 'pemesanan') == 'terdiri atas'     # a part of the order
+    assert _relation_label('pembayaran', 'pemesanan') == 'dibayar melalui'          # the order is paid through it
 
 
 def test_unknown_tables_fall_back_to_memiliki():
@@ -100,3 +100,115 @@ def test_cycle_of_tables_is_packed_without_long_lines():
         (c1, r1), (c2, r2) = grid[rel['from_table']], grid[rel['to_table']]
         assert abs(c1 - c2) + abs(r1 - r2) == 1, (rel['from_table'], rel['to_table'])
     assert len(set(grid.values())) == len(grid)                      # nobody shares a cell
+
+
+# ── Verbs that fit the relation (relation_names.py) ──────────────────────────
+
+from relation_names import active_verb, diamond_text, relation_label  # type: ignore  # noqa: E402
+
+YABUN_SQL = '''
+CREATE TABLE pengguna (id INT PRIMARY KEY);
+CREATE TABLE program (id INT PRIMARY KEY);
+CREATE TABLE katalog (id INT PRIMARY KEY, program_id INT REFERENCES program(id));
+CREATE TABLE artikel (id INT PRIMARY KEY, program_id INT REFERENCES program(id),
+                      penulis_id INT REFERENCES pengguna(id));
+CREATE TABLE donatur (id INT PRIMARY KEY);
+CREATE TABLE rekening_bank (id INT PRIMARY KEY);
+CREATE TABLE donasi (id INT PRIMARY KEY, donatur_id INT REFERENCES donatur(id),
+                     rekening_bank_id INT REFERENCES rekening_bank(id),
+                     diverifikasi_oleh INT REFERENCES pengguna(id));
+CREATE TABLE transaksi_keuangan (id INT PRIMARY KEY, donasi_id INT REFERENCES donasi(id),
+                                 dicatat_oleh INT REFERENCES pengguna(id));
+CREATE TABLE kegiatan (id INT PRIMARY KEY);
+CREATE TABLE foto_kegiatan (id INT PRIMARY KEY, kegiatan_id INT REFERENCES kegiatan(id));
+'''
+
+
+def test_yabun_relations_get_the_verbs_that_fit_them():
+    schema = parse_sql(YABUN_SQL)
+    got = {(r['to_table'], r['from_table']): relation_label(r['from_table'], r['to_table'], '', r['from_column'])
+           for r in schema['relations']}
+    assert got == {
+        ('program', 'katalog'): 'menaungi',
+        ('program', 'artikel'): 'memuat',
+        ('pengguna', 'artikel'): 'menulis',                     # penulis_id
+        ('donatur', 'donasi'): 'memberikan',
+        ('rekening_bank', 'donasi'): 'menerima',
+        ('pengguna', 'donasi'): 'memverifikasi',                 # diverifikasi_oleh
+        ('donasi', 'transaksi_keuangan'): 'tercatat sebagai',
+        ('pengguna', 'transaksi_keuangan'): 'mencatat',          # dicatat_oleh
+        ('kegiatan', 'foto_kegiatan'): 'dilengkapi',
+    }
+    assert 'memiliki' not in _diamond_labels(YABUN_SQL)
+
+
+def test_the_fk_column_names_the_role():
+    assert relation_label('artikel', 'users', column='author_id') == 'menulis'
+    assert relation_label('pengajuan', 'users', column='approved_by') == 'menyetujui'
+    assert relation_label('tiket', 'users', column='assigned_to') == 'menangani'
+    assert relation_label('produk', 'users', column='created_by') == 'membuat'
+    assert relation_label('laporan', 'pengguna', column='disetujui_oleh') == 'menyetujui'
+    assert relation_label('stok', 'pengguna', column='diperbarui_oleh') == 'memperbarui'
+    assert relation_label('pegawai', 'pegawai', column='atasan_id') == 'membawahi'
+    assert relation_label('toko', 'users', column='pemilik_id') == 'memiliki'   # the one place it fits
+    # a generic users table seen through the column's role
+    assert relation_label('penjualan', 'users', column='kasir_id') == 'melayani'
+    assert relation_label('pemesanan', 'users', column='pelanggan_id') == 'memesan'
+
+
+def test_parts_of_a_table():
+    assert relation_label('detail_pemesanan', 'pemesanan') == 'terdiri atas'
+    assert relation_label('order_items', 'orders') == 'terdiri atas'
+    assert relation_label('riwayat_stok', 'stok') == 'tercatat dalam'
+    assert relation_label('anggota_tim', 'tim') == 'beranggotakan'
+    assert relation_label('ulasan_produk', 'produk') == 'menerima'
+
+
+def test_kinds_of_tables():
+    cases = {
+        ('produk', 'kategori'): 'mengelompokkan', ('articles', 'program_categories'): 'mengelompokkan',
+        ('barang_masuk', 'supplier'): 'memasok', ('barang_masuk', 'users'): 'mencatat',
+        ('produk', 'users'): 'mengelola', ('artikel', 'admin'): 'menulis',
+        ('pemesanan', 'pelanggan'): 'memesan', ('peminjaman', 'anggota'): 'meminjam',
+        ('pembayaran', 'pelanggan'): 'membayar', ('kunjungan', 'pasien'): 'melakukan',
+        ('detail_pemesanan', 'produk'): 'dipesan dalam', ('peminjaman', 'buku'): 'dipinjam dalam',
+        ('barang_keluar', 'produk_snack'): 'tercatat pada',
+        ('pembayaran', 'pemesanan'): 'dibayar melalui', ('tiket', 'pemesanan'): 'menghasilkan',
+        ('financial_transactions', 'donatur'): 'bertransaksi',
+        ('siswa', 'kelas'): 'menampung', ('pemesanan', 'studio'): 'dipesan dalam',
+        ('mahasiswa', 'jurusan'): 'menaungi', ('stok', 'gudang'): 'menyimpan',
+        ('pelanggan', 'wilayah'): 'mencakup', ('jadwal', 'dosen'): 'mengajar',
+        ('komentar', 'artikel'): 'menerima', ('peserta', 'kegiatan'): 'diikuti',
+    }
+    for (child, parent), verb in cases.items():
+        assert relation_label(child, parent) == verb, (child, parent)
+
+
+def test_memiliki_is_only_the_last_resort():
+    assert relation_label('xyz', 'abc') == 'memiliki'
+    labels = [relation_label(c, p) for (c, p) in [
+        ('produk', 'kategori'), ('barang_masuk', 'supplier'), ('pemesanan', 'pelanggan'),
+        ('pembayaran', 'pemesanan'), ('detail_pemesanan', 'produk')]]
+    assert 'memiliki' not in labels and len(set(labels)) == len(labels)
+
+
+def test_active_verbs_follow_the_men_prefix_rules():
+    pairs = {
+        'verifikasi': 'memverifikasi', 'catat': 'mencatat', 'buat': 'membuat', 'setujui': 'menyetujui',
+        'tangani': 'menangani', 'perbarui': 'memperbarui', 'periksa': 'memeriksa', 'kirim': 'mengirim',
+        'konfirmasi': 'mengonfirmasi', 'unggah': 'mengunggah', 'input': 'menginput', 'proses': 'memproses',
+        'terima': 'menerima', 'tulis': 'menulis', 'cek': 'mengecek', 'hapus': 'menghapus',
+        'nilai': 'menilai', 'simpan': 'menyimpan', 'daftar': 'mendaftar', 'jual': 'menjual',
+        'transfer': 'mentransfer', 'klik': 'mengeklik', 'kembalikan': 'mengembalikan', 'ubah': 'mengubah',
+        'rekam': 'merekam', 'pesan': 'memesan', 'gunakan': 'menggunakan', 'validasi': 'memvalidasi',
+        'pakai': 'memakai', 'bom': 'mengebom',
+    }
+    for root, verb in pairs.items():
+        assert active_verb(root) == verb, root
+
+
+def test_long_labels_wrap_inside_the_diamond():
+    assert diamond_text('tercatat sebagai') == 'tercatat<br>sebagai'
+    assert diamond_text('mengelompokkan') == 'mengelompokkan'
+    assert diamond_text('menulis') == 'menulis'
+    assert diamond_text('<script>') == '&lt;script&gt;'                 # names from SQL comments are escaped

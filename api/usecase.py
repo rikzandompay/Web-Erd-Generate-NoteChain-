@@ -3,8 +3,12 @@
 Use case diagram from PlantUML-like text: parser → model → layout → draw.io cells.
 
     system Perpustakaan {                  system boundary around the use cases
-      (Login Petugas)                      use case (ellipse)
-      (Peminjaman Buku)
+      [Input]                              group label: the use cases below it, until the next group
+      (Input Data Buku)                    use case (ellipse)
+      [Proses]
+      (Proses Peminjaman)
+      [Output]
+      (Cetak Laporan)
     }
     actor Petugas                          primary actor, drawn left of the system
     actor Pembayaran <<sekunder>>          secondary / external actor, drawn on the right
@@ -14,7 +18,9 @@ Use case diagram from PlantUML-like text: parser → model → layout → draw.i
     Admin <|-- SuperAdmin                  generalization (hollow triangle at Admin)
 
 Layout: one column of equally wide ellipses inside the boundary, actors beside
-it at the height of the use cases they use. Lines between use cases (and
+it at the height of the use cases they use. Groups ([Input], [Proses], [Output])
+stack in the order written, each under its own label with a dashed divider
+between them; use cases outside any group come first. Lines between use cases (and
 between actors) run around the outside of their column on lanes of their own,
 so no line crosses another ellipse. No colours are hard-coded.
 """
@@ -36,6 +42,10 @@ LINE_H = 20
 ACTOR_W, ACTOR_H = 30, 60
 ACTOR_STRIDE = 110      # actor top to next actor top: figure + label + air
 TITLE_H = 50
+GROUP_LABEL_H = 20      # a group's name above its first ellipse
+GROUP_LABEL_GAP = 10
+DIVIDER_H = 10          # dashed line between two groups
+DIVIDER_GAP = 10
 PAD_L = 60              # boundary edge to the ellipses
 PAD_B = 30
 OUTER_GAP = 100         # actor column to boundary
@@ -46,6 +56,9 @@ SECONDARY = ('sekunder', 'secondary', 'eksternal', 'external')
 BOUNDARY_STYLE = ('rounded=0;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;'
                   'verticalAlign=top;align=center;fontStyle=1;fontSize=14;fillColor=none;')
 USECASE_STYLE = 'ellipse;whiteSpace=wrap;html=1;'
+GROUP_LABEL_STYLE = ('text;html=1;align=left;verticalAlign=middle;fontStyle=1;fontSize=12;'
+                     'spacingLeft=0;strokeColor=none;fillColor=none;')
+DIVIDER_STYLE = 'line;strokeWidth=1;dashed=1;html=1;fillColor=none;'
 ACTOR_STYLE = 'shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;'
 EDGE_BASE = 'html=1;edgeStyle=none;rounded=0;fontSize=11;'
 EDGE_ENDS = {
@@ -73,6 +86,8 @@ class UseCaseModel:
     actors: dict[str, str] = field(default_factory=dict)       # name → 'L' or 'R'
     usecases: list[str] = field(default_factory=list)
     rels: list[Rel] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)            # group names in the order written
+    group_of: dict[str, str] = field(default_factory=dict)     # use case → group ('' = none)
 
 
 # ── Parser ───────────────────────────────────────────────────────────────────
@@ -80,6 +95,7 @@ class UseCaseModel:
 _SYSTEM = re.compile(r'^(?:system|rectangle|package)\s+(.+?)\s*\{\s*$', re.IGNORECASE)
 _ACTOR = re.compile(r'^actor\s+(.+?)(?:\s*<<\s*([\w ]+?)\s*>>)?\s*$', re.IGNORECASE)
 _USECASE = re.compile(r'^\(([^()]+)\)\s*$')
+_GROUP = re.compile(r'^\[\s*([^\[\]]+?)\s*\]$')
 _OPERAND = r'(\([^()]+\)|[^()<>:|]+?)'
 _REL = re.compile(rf'^{_OPERAND}\s*(<\|--|--\|>|\.\.>|-->|->|--)\s*{_OPERAND}\s*(?::\s*(.*))?$')
 
@@ -89,10 +105,12 @@ def parse_usecase(title: str, lines: list[tuple[int, str]]) -> tuple[UseCaseMode
     model = UseCaseModel(title)
     errors: list[tuple[int, str]] = []
     inside: int | None = None        # line of the open `system {`
+    group = ''                        # the group new use cases are written under
 
     def add_usecase(name: str) -> str:
         if name not in model.usecases:
             model.usecases.append(name)
+            model.group_of[name] = group
         return f'({name})'
 
     def node(operand: str) -> str:
@@ -108,7 +126,11 @@ def parse_usecase(title: str, lines: list[tuple[int, str]]) -> tuple[UseCaseMode
             continue
 
         if inside is not None and text == '}':
-            inside = None
+            inside, group = None, ''
+        elif m := _GROUP.match(text):
+            group = m.group(1)
+            if group not in model.groups:
+                model.groups.append(group)
         elif m := _SYSTEM.match(text):
             if model.system or inside is not None:
                 errors.append((lineno, 'Hanya satu blok system per halaman'))
@@ -120,6 +142,8 @@ def parse_usecase(title: str, lines: list[tuple[int, str]]) -> tuple[UseCaseMode
         elif m := _USECASE.match(text):
             add_usecase(m.group(1).strip())
         elif m := _REL.match(text):
+            # Use cases first named in a line like this one belong to no group
+            group, saved = '', group
             left, op, right, label = m.groups()
             src, dst = node(left), node(right)
             if op == '<|--':                       # right is the child, the triangle sits at the left
@@ -130,8 +154,9 @@ def parse_usecase(title: str, lines: list[tuple[int, str]]) -> tuple[UseCaseMode
                 model.rels.append(Rel('dependency', src, dst, (label or '').strip(), lineno))
             else:
                 model.rels.append(Rel('assoc', src, dst, (label or '').strip(), lineno))
+            group = saved
         else:
-            errors.append((lineno, f'Baris tidak dikenali: "{text}". Contoh: actor Admin, (Login), Admin --> (Login)'))
+            errors.append((lineno, f'Baris tidak dikenali: "{text}". Contoh: actor Admin, [Input], (Input Data), Admin --> (Input Data)'))
 
     if inside is not None:
         errors.append((inside, "blok system belum ditutup dengan '}'"))
@@ -151,11 +176,24 @@ def render_usecase(model: UseCaseModel) -> ET.Element:
     uc_lines = {n: textwrap.wrap(n, inner) or [n] for n in ucs}
     uc_h = {n: max(UC_MIN_H, int(math.ceil((LINE_H * len(uc_lines[n]) + 30) / 10)) * 10) for n in ucs}
 
+    # Ungrouped use cases first, then each group in the order written
+    ordered = [(g, [n for n in ucs if model.group_of.get(n, '') == g]) for g in ['', *model.groups]]
+    ordered = [(g, members) for g, members in ordered if members]
+
     uc_top: dict[str, int] = {}
+    labels: list[tuple[str, int]] = []          # (group name, y)
+    dividers: list[int] = []
     y = TITLE_H
-    for n in ucs:
-        uc_top[n] = y
-        y += uc_h[n] + UC_GAP
+    for i, (g, members) in enumerate(ordered):
+        if i:
+            dividers.append(y - UC_GAP + (UC_GAP + DIVIDER_GAP) // 2)   # midway to the next label
+            y += DIVIDER_H + DIVIDER_GAP
+        if g:
+            labels.append((g, y))
+            y += GROUP_LABEL_H + GROUP_LABEL_GAP
+        for n in members:
+            uc_top[n] = y
+            y += uc_h[n] + UC_GAP
     stack_end = y - UC_GAP
     uc_mid = {n: uc_top[n] + uc_h[n] // 2 for n in ucs}
 
@@ -235,6 +273,11 @@ def render_usecase(model: UseCaseModel) -> ET.Element:
     boundary = page.vertex(html.escape(title), BOUNDARY_STYLE, (bx, 0, bw, height))
     cell: dict[str, str] = {}
     rect: dict[str, Rect] = {}
+    # Labels and dividers span the ellipse column only, so no actor line crosses them
+    for g, gy in labels:
+        page.vertex(html.escape(g), GROUP_LABEL_STYLE, (PAD_L, gy, uc_w, GROUP_LABEL_H), parent=boundary)
+    for dy in dividers:
+        page.vertex('', DIVIDER_STYLE, (PAD_L, dy, uc_w, DIVIDER_H), parent=boundary)
     for n in ucs:
         cell[f'({n})'] = page.vertex('<br>'.join(html.escape(line) for line in uc_lines[n]), USECASE_STYLE,
                                       (PAD_L, uc_top[n], uc_w, uc_h[n]), parent=boundary)

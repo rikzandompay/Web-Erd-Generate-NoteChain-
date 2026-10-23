@@ -13,7 +13,7 @@ const SECTIONS = [
 const TYPE_NOTES = {
   usecase: {
     title: 'Use case diagram',
-    text: 'Use case dikelompokkan dengan pola Input, Proses, Output: tulis [Input], [Proses], dan [Output] di dalam blok system, lalu use case di bawah labelnya. Kelompok digambar berurutan dari atas ke bawah dengan garis pemisah putus-putus. Setiap use case cukup dihubungkan ke aktornya; include dan extend tidak dipakai. Aktor biasa ada di kiri, aktor yang ditandai <<sekunder>> (misalnya sistem pembayaran) ada di kanan.',
+    text: 'Use case dibaca dari kiri ke kanan, Input lalu Proses lalu Output: aktor utama di kiri, use case di dalam kotak sistem di tengah, dan aktor sekunder (ditandai <<sekunder>>, misalnya Bank atau Payment Gateway) di kanan. Use case diurutkan otomatis per aktor sehingga garis tidak bersilangan, dan nama use case dibagi dua baris. Setiap use case cukup dihubungkan ke aktornya; include dan extend tidak dipakai.',
   },
   sequence: {
     title: 'Sequence diagram',

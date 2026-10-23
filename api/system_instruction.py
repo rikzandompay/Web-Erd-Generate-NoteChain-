@@ -136,48 +136,42 @@ Donatur "1" -- "0..*" Donasi : berdonasi
 RekeningBank "1" -- "0..*" Donasi : menerima''',
 
     'usecase': '''\
-FORMAT USE CASE DIAGRAM (pola Input -> Proses -> Output)
-- Batas sistem: "system Nama Sistem {", lalu isi, lalu "}". Hanya satu blok system per halaman.
-- Di dalam blok system, use case SELALU dikelompokkan dengan tiga label kelompok, berurutan:
-    [Input]    use case memasukkan atau mengelola data (Input Data X, Kelola Data X, Login, Registrasi)
-    [Proses]   use case mengolah data (Verifikasi X, Validasi X, Hitung X, Proses X)
-    [Output]   use case menghasilkan informasi (Cetak Laporan X, Lihat Riwayat X, Unduh X)
-  Tulis label kelompok pada baris sendiri, lalu use case-nya di bawahnya, satu per baris berbentuk "(Nama Use Case)".
-- Aktor: "actor Nama". Aktor utama ditulis biasa dan digambar di kiri. Sistem eksternal ditulis "actor Nama <<sekunder>>" dan digambar di kanan.
-- Hubungan aktor dengan use case: Aktor --> (Nama Use Case)
-- Generalisasi aktor (jarang perlu): Induk <|-- Anak
+FORMAT USE CASE DIAGRAM (dibaca dari kiri ke kanan: Input -> Proses -> Output)
+- INPUT, di kiri: aktor utama yang memulai interaksi (Admin, Pelanggan, Petugas). Ditulis "actor Nama".
+- PROSES, di tengah: use case di dalam kotak sistem. Tulis "system Nama Sistem {", lalu satu use case per baris berbentuk "(Nama Use Case)", lalu "}".
+- OUTPUT, di kanan: aktor sekunder yang menerima hasil atau pihak luar yang ikut terlibat (Bank, Payment Gateway, Pimpinan, Sistem Email). Ditulis "actor Nama <<sekunder>>".
+- Hubungan aktor dengan use case: Aktor --> (Nama Use Case). Aktor sekunder dihubungkan ke setiap use case yang melibatkannya, sama seperti aktor utama.
 
 KESALAHAN YANG HARUS DIHINDARI
-- JANGAN memakai include atau extend, dan jangan menulis garis "..>" di antara use case. Setiap use case hanya dihubungkan ke aktor.
-- Setiap kelompok berisi minimal satu use case, dan urutannya selalu [Input], [Proses], [Output].
-- Nama use case diawali kata kerja. Jangan memakai tanda kurung atau titik koma di dalam nama.
-- Setiap use case dihubungkan ke minimal satu aktor.
+- Selalu ada minimal satu aktor utama di kiri dan satu aktor sekunder di kanan. Kalau permintaan tidak menyebut pihak penerima hasil, pilih yang paling wajar untuk sistem itu (Pimpinan untuk laporan, Bank atau Payment Gateway untuk pembayaran, Sistem Email untuk notifikasi). Ini satu-satunya pengecualian dari aturan "jangan mengarang aktor".
+- JANGAN memakai include, extend, garis "..>", atau label kelompok. Setiap use case hanya dihubungkan ke aktor.
+- Tulis use case berurutan per aktor utama: semua use case aktor pertama dulu, lalu aktor berikutnya.
+- Nama use case singkat, 2 sampai 3 kata, diawali kata kerja (Cek Saldo, Tarik Tunai, Cetak Laporan). Jangan memakai tanda kurung di dalam nama.
 - Jangan menulis aktor di dalam blok system. Aktor ada di luarnya.
-- Jangan menambah aktor atau use case yang tidak disebut atau tidak jelas tersirat.
 
 CONTOH
-=== Sistem Donasi
-system Sistem Donasi {
-  [Input]
-  (Login)
-  (Input Data Donatur)
-  (Input Data Donasi)
-  [Proses]
-  (Verifikasi Donasi)
-  (Hitung Total Dana)
-  [Output]
-  (Cetak Laporan Donasi)
-  (Lihat Riwayat Donasi)
+=== Sistem ATM
+system Bank ATM {
+  (Cek Saldo)
+  (Setor Tunai)
+  (Tarik Tunai)
+  (Transfer Dana)
+  (Perawatan Mesin)
+  (Perbaikan Mesin)
 }
-actor Admin
-actor Donatur
-Admin --> (Login)
-Admin --> (Input Data Donatur)
-Admin --> (Verifikasi Donasi)
-Admin --> (Hitung Total Dana)
-Admin --> (Cetak Laporan Donasi)
-Donatur --> (Input Data Donasi)
-Donatur --> (Lihat Riwayat Donasi)''',
+actor Nasabah
+actor Teknisi ATM
+actor Bank <<sekunder>>
+Nasabah --> (Cek Saldo)
+Nasabah --> (Setor Tunai)
+Nasabah --> (Tarik Tunai)
+Nasabah --> (Transfer Dana)
+Teknisi ATM --> (Perawatan Mesin)
+Teknisi ATM --> (Perbaikan Mesin)
+Bank --> (Cek Saldo)
+Bank --> (Setor Tunai)
+Bank --> (Tarik Tunai)
+Bank --> (Transfer Dana)''',
 }
 
 

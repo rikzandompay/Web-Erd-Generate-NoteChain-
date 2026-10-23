@@ -3,32 +3,28 @@
 
 export const EXAMPLES = {
   usecase: `=== Sistem Informasi Perpustakaan
-system Perpustakaan {
-  [Input]
+system Perpustakaan <<subsystem>> {
   (Login Petugas)
-  (Input Data Anggota)
   (Input Data Buku)
-  [Proses]
-  (Proses Peminjaman Buku)
-  (Proses Pengembalian Buku)
-  (Hitung Denda)
-  [Output]
-  (Cetak Laporan Peminjaman)
-  (Lihat Katalog Buku)
+  (Proses Peminjaman)
+  (Proses Pengembalian)
+  (Cari Katalog Buku)
+  (Pinjam Buku Online)
+  (Bayar Denda)
 }
 
 actor Petugas
 actor Anggota
-actor Pembayaran <<sekunder>>
+actor Bank <<sekunder>>
 
 Petugas --> (Login Petugas)
-Petugas --> (Input Data Anggota)
 Petugas --> (Input Data Buku)
-Petugas --> (Proses Peminjaman Buku)
-Petugas --> (Proses Pengembalian Buku)
-Petugas --> (Cetak Laporan Peminjaman)
-Anggota --> (Lihat Katalog Buku)
-Pembayaran --> (Hitung Denda)
+Petugas --> (Proses Peminjaman)
+Petugas --> (Proses Pengembalian)
+Anggota --> (Cari Katalog Buku)
+Anggota --> (Pinjam Buku Online)
+Anggota --> (Bayar Denda)
+Bank --> (Bayar Denda)
 `,
   sequence: `=== Edit Data Stok Bahan
 actor Admin
@@ -111,12 +107,12 @@ bahan <|-- bahan_kering
 export const SYNTAX = {
   usecase: [
     ['=== Nama Halaman', 'mulai diagram baru di halaman sendiri'],
-    ['system Nama { ... }', 'batas sistem berisi use case, satu per baris'],
-    ['[Input] [Proses] [Output]', 'label kelompok di dalam system; use case di bawahnya masuk kelompok itu'],
-    ['(Input Data Buku)', 'use case, diawali kata kerja'],
-    ['actor Admin', 'aktor utama, digambar di kiri'],
-    ['actor Bank <<sekunder>>', 'aktor sekunder atau sistem eksternal, digambar di kanan'],
-    ['Admin --> (Input Data Buku)', 'hubungan aktor dengan use case'],
+    ['system Nama { ... }', 'kotak sistem (proses) berisi use case, satu per baris'],
+    ['system Nama <<subsystem>> {', 'sama, dengan tulisan «subsystem» di atas nama'],
+    ['(Tarik Tunai)', 'use case, 2 sampai 3 kata diawali kata kerja'],
+    ['actor Nasabah', 'aktor utama (input), digambar di kiri'],
+    ['actor Bank <<sekunder>>', 'aktor sekunder (output), digambar di kanan'],
+    ['Nasabah --> (Tarik Tunai)', 'hubungan aktor dengan use case, juga untuk aktor sekunder'],
   ],
   sequence: [
     ['=== Nama Halaman', 'mulai diagram baru di halaman sendiri'],

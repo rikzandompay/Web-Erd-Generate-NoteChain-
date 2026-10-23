@@ -53,6 +53,11 @@ def root():
     return ET.fromstring(result['xml']).find('diagram/mxGraphModel/root')
 
 
+def _text(cell):
+    """A cell's label as plain text: line breaks become spaces, bold tags go."""
+    return ' '.join(re.sub(r'<[^>]+>', ' ', (cell.get('value') or '').replace('<br>', ' ')).split())
+
+
 def _top(root):
     return [c for c in root if c.get('vertex') == '1' and c.get('parent') == '1']
 
@@ -107,7 +112,7 @@ def test_boundary_holds_the_ellipses_and_actors_stand_outside(root):
     cells, rects = _cells(root)
     boundary = next(c for c in _top(root) if 'container=1' in c.get('style'))
     bx, by, bw, bh = rects[boundary.get('id')]
-    assert boundary.get('value') == 'Perpustakaan'
+    assert _text(boundary) == 'Perpustakaan'
     for uc in _usecases(root):
         x, y, w, h = rects[uc.get('id')]
         assert uc.get('parent') == boundary.get('id') and bx < x and x + w < bx + bw and by < y and y + h < by + bh
@@ -127,7 +132,7 @@ def test_ellipses_are_stacked_with_even_gaps_and_a_shared_width(root):
 
 def test_actors_sit_at_the_height_of_their_use_cases(root):
     cells, rects = _cells(root)
-    by_text = {c.get('value'): rects[c.get('id')] for c in _usecases(root)}
+    by_text = {_text(c): rects[c.get('id')] for c in _usecases(root)}
     actor = next(rects[c.get('id')] for c in _top(root) if c.get('value') == 'Anggota')
     low, high = by_text['Katalog Pencarian'], by_text['Peminjaman Buku']
     assert min(high[1], low[1]) <= actor[1] + 30 <= max(high[1] + high[3], low[1] + low[3])
@@ -150,7 +155,7 @@ def test_no_line_runs_through_another_use_case(root):
 def test_relation_styles_and_labels(root):
     cells, _ = _cells(root)
     edges = [c for c in root if c.get('edge') == '1']
-    names = {c.get('id'): c.get('value') for c in cells.values() if c.get('vertex') == '1'}
+    names = {c.get('id'): _text(c) for c in cells.values() if c.get('vertex') == '1'}
     by_pair = {(names[e.get('source')], names[e.get('target')]): e for e in edges}
     include = by_pair[('Peminjaman Buku', 'Login Petugas')]
     assert include.get('value') == '&lt;&lt;include&gt;&gt;' and 'dashed=1' in include.get('style') and 'endArrow=open' in include.get('style')
@@ -232,7 +237,7 @@ def test_groups_are_parsed_in_the_order_written():
 def test_groups_stack_input_then_process_then_output_under_their_labels():
     root = _ipo_root()
     _, rects = _cells(root)
-    y = {c.get('value'): rects[c.get('id')][1] for c in root if c.get('vertex') == '1'}
+    y = {_text(c): rects[c.get('id')][1] for c in root if c.get('vertex') == '1'}
     labels = [c for c in root if (c.get('style') or '').startswith('text;') and c.get('value') in ('Input', 'Proses', 'Output')]
     assert [c.get('value') for c in sorted(labels, key=lambda c: y[c.get('value')])] == ['Input', 'Proses', 'Output']
     assert y['Input'] < y['Input Data Donatur'] < y['Input Data Donasi'] < y['Proses'] < y['Verifikasi Donasi'] \
@@ -268,3 +273,95 @@ def test_without_groups_nothing_changes():
 def test_use_cases_first_named_in_a_relation_are_not_put_in_a_group():
     model, errors = parse_usecase('x', list(enumerate(['system S {', '[Input]', '(A)', '}', 'Admin --> (B)'], start=1)))
     assert errors == [] and model.group_of == {'A': 'Input', 'B': ''}
+
+
+# ── Left to right: primary actors → use cases → secondary actors (the ATM picture) ──
+
+ATM = """\
+=== Sistem ATM
+system Bank ATM <<subsystem>> {
+  (Perawatan Mesin)
+  (Cek Saldo)
+  (Perbaikan Mesin)
+  (Setor Tunai)
+  (Tarik Tunai)
+  (Transfer Dana)
+}
+actor Nasabah
+actor Teknisi ATM
+actor Bank <<sekunder>>
+Nasabah --> (Cek Saldo)
+Nasabah --> (Setor Tunai)
+Nasabah --> (Tarik Tunai)
+Nasabah --> (Transfer Dana)
+Teknisi ATM --> (Perawatan Mesin)
+Teknisi ATM --> (Perbaikan Mesin)
+Bank --> (Cek Saldo)
+Bank --> (Setor Tunai)
+Bank --> (Tarik Tunai)
+Bank --> (Transfer Dana)
+"""
+
+
+def _atm():
+    result = generate_uml('usecase', ATM)
+    assert result['errors'] == []
+    root = ET.fromstring(result['xml']).find('diagram/mxGraphModel/root')
+    _, rects = _cells(root)
+    return root, rects
+
+
+def test_system_title_shows_the_stereotype_above_the_bold_name_at_the_left():
+    root, _ = _atm()
+    boundary = next(c for c in root if 'container=1' in (c.get('style') or ''))
+    assert boundary.get('value') == '&laquo;subsystem&raquo;<br><b>Bank ATM</b>'
+    assert 'align=left' in boundary.get('style')
+
+
+def test_use_cases_are_grouped_by_the_actor_that_uses_them():
+    root, rects = _atm()
+    order = [_text(c) for c in sorted(_usecases(root), key=lambda c: rects[c.get('id')][1])]
+    # written mixed up, drawn as the nasabah's four and then the technician's two
+    assert order == ['Cek Saldo', 'Setor Tunai', 'Tarik Tunai', 'Transfer Dana', 'Perawatan Mesin', 'Perbaikan Mesin']
+
+
+def test_input_left_process_middle_output_right():
+    root, rects = _atm()
+    boundary = next(c for c in root if 'container=1' in (c.get('style') or ''))
+    bx, _, bw, _ = rects[boundary.get('id')]
+    actor = {c.get('value'): rects[c.get('id')] for c in _top(root) if 'umlActor' in c.get('style')}
+    assert actor['Nasabah'][0] < bx and actor['Teknisi ATM'][0] < bx
+    assert actor['Bank'][0] > bx + bw
+    # each actor at the height of its own use cases: the nasabah above the technician, the bank beside the nasabah's
+    assert actor['Nasabah'][1] < actor['Teknisi ATM'][1]
+    assert abs(actor['Bank'][1] - actor['Nasabah'][1]) <= 10
+
+
+def test_lines_from_different_actors_do_not_cross():
+    root, rects = _atm()
+    edges = [c for c in root if c.get('edge') == '1']
+    segments = [_ends(e, rects) for e in edges]
+
+    def cross(p1, p2, q1, q2):
+        def side(a, b, c):
+            return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        return side(p1, p2, q1) * side(p1, p2, q2) < 0 and side(q1, q2, p1) * side(q1, q2, p2) < 0
+
+    for (a1, a2), (b1, b2) in itertools.combinations(segments, 2):
+        assert not cross(a1, a2, b1, b2)
+
+
+def test_names_go_on_two_balanced_lines_in_equal_ellipses():
+    root, rects = _atm()
+    values = {_text(c): c.get('value') for c in _usecases(root)}
+    assert values['Transfer Dana'] == 'Transfer<br>Dana'
+    assert len({rects[c.get('id')][2] for c in _usecases(root)}) == 1
+    assert all(rects[c.get('id')][3] == 60 for c in _usecases(root))
+    from usecase import _two_lines  # type: ignore
+    assert _two_lines('Cetak Laporan Peminjaman Buku') == ['Cetak Laporan', 'Peminjaman Buku']
+    assert _two_lines('Login') == ['Login']
+
+
+def test_output_is_another_name_for_the_right_side():
+    model, _ = parse_usecase('x', list(enumerate(['(A)', 'actor Pimpinan <<output>>', 'Pimpinan --> (A)'], start=1)))
+    assert model.actors == {'Pimpinan': 'R'}

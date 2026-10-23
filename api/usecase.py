@@ -2,27 +2,24 @@
 """
 Use case diagram from PlantUML-like text: parser → model → layout → draw.io cells.
 
-    system Perpustakaan {                  system boundary around the use cases
-      [Input]                              group label: the use cases below it, until the next group
-      (Input Data Buku)                    use case (ellipse)
-      [Proses]
-      (Proses Peminjaman)
-      [Output]
-      (Cetak Laporan)
+    system Bank ATM <<subsystem>> {        system boundary (the stereotype line is optional)
+      (Cek Saldo)                          use case (ellipse)
+      (Tarik Tunai)
     }
-    actor Petugas                          primary actor, drawn left of the system
-    actor Pembayaran <<sekunder>>          secondary / external actor, drawn on the right
-    Petugas --> (Login Petugas)            association (plain line)
-    (Peminjaman Buku) ..> (Login Petugas) : <<include>>     dashed arrow with a label
-    (Pengembalian Buku) ..> (Hitung Denda) : <<extend>>
+    actor Nasabah                          primary actor: the input side, drawn on the left
+    actor Bank <<sekunder>>                secondary actor: the output side, drawn on the right
+    Nasabah --> (Cek Saldo)                association (plain line)
+    (Tarik Tunai) ..> (Cek Saldo) : <<include>>     dashed arrow with a label (still read, not taught)
     Admin <|-- SuperAdmin                  generalization (hollow triangle at Admin)
 
-Layout: one column of equally wide ellipses inside the boundary, actors beside
-it at the height of the use cases they use. Groups ([Input], [Proses], [Output])
-stack in the order written, each under its own label with a dashed divider
-between them; use cases outside any group come first. Lines between use cases (and
-between actors) run around the outside of their column on lanes of their own,
-so no line crosses another ellipse. No colours are hard-coded.
+Layout reads left to right, input → process → output: primary actors on the
+left, one column of equally wide two-line ellipses in the system box, secondary
+actors on the right. Use cases are ordered by the primary actors that use them
+so the lines from each actor fan out without crossing, and every actor sits at
+the height of its use cases. Lines between use cases (and between actors) run
+around the outside of their column on lanes of their own, so no line crosses
+another ellipse. No colours are hard-coded. ([Name] group labels inside the
+system block are still drawn, for texts that already use them.)
 """
 
 import html
@@ -51,10 +48,10 @@ PAD_B = 30
 OUTER_GAP = 100         # actor column to boundary
 LANE_BASE = 60          # ellipse edge to the first lane
 LANE_STEP = 50
-SECONDARY = ('sekunder', 'secondary', 'eksternal', 'external')
+SECONDARY = ('sekunder', 'secondary', 'eksternal', 'external', 'output')
 
 BOUNDARY_STYLE = ('rounded=0;whiteSpace=wrap;html=1;container=1;collapsible=0;recursiveResize=0;'
-                  'verticalAlign=top;align=center;fontStyle=1;fontSize=14;fillColor=none;')
+                  'verticalAlign=top;align=left;spacingLeft=10;spacingTop=2;fontSize=12;fillColor=none;')
 USECASE_STYLE = 'ellipse;whiteSpace=wrap;html=1;'
 GROUP_LABEL_STYLE = ('text;html=1;align=left;verticalAlign=middle;fontStyle=1;fontSize=12;'
                      'spacingLeft=0;strokeColor=none;fillColor=none;')
@@ -83,6 +80,7 @@ class Rel:
 class UseCaseModel:
     title: str
     system: str = ''
+    stereotype: str = ''                                        # «subsystem» above the system name
     actors: dict[str, str] = field(default_factory=dict)       # name → 'L' or 'R'
     usecases: list[str] = field(default_factory=list)
     rels: list[Rel] = field(default_factory=list)
@@ -135,7 +133,10 @@ def parse_usecase(title: str, lines: list[tuple[int, str]]) -> tuple[UseCaseMode
             if model.system or inside is not None:
                 errors.append((lineno, 'Hanya satu blok system per halaman'))
             else:
-                model.system, inside = m.group(1).strip(), lineno
+                name = m.group(1).strip()
+                tag = re.match(r'^(.*?)\s*<<\s*(.+?)\s*>>$', name)
+                model.system, model.stereotype = (tag.group(1), tag.group(2)) if tag else (name, '')
+                inside = lineno
         elif m := _ACTOR.match(text):
             name = m.group(1).strip()
             model.actors[name] = 'R' if (m.group(2) or '').strip().lower() in SECONDARY else 'L'
@@ -163,27 +164,52 @@ def parse_usecase(title: str, lines: list[tuple[int, str]]) -> tuple[UseCaseMode
     return model, errors
 
 
+def _two_lines(name: str) -> list[str]:
+    """"Transfer Dana Antar Bank" → ["Transfer Dana", "Antar Bank"]: the split with the shortest longer line."""
+    words = name.split()
+    if len(words) < 2:
+        return [name]
+    splits = [(' '.join(words[:i]), ' '.join(words[i:])) for i in range(1, len(words))]
+    return list(min(splits, key=lambda pair: (max(len(pair[0]), len(pair[1])), len(pair[0]))))
+
+
 # ── Layout & render ──────────────────────────────────────────────────────────
 
 def render_usecase(model: UseCaseModel) -> ET.Element:
     ucs = model.usecases
     actors = list(model.actors)
 
-    # ── Ellipses: one width for all, height by wrapped lines ────────────────
-    longest = max(len(n) for n in ucs)
+    # ── Ellipses: one width for all, names on two balanced lines ────────────
+    longest = max(max(len(line) for line in _two_lines(n)) for n in ucs)
     uc_w = max(UC_MIN_W, min(UC_MAX_W, int(math.ceil(longest * CHAR_W / 0.68 / 10)) * 10))
     inner = max(8, int(uc_w * 0.68) // CHAR_W)
-    uc_lines = {n: textwrap.wrap(n, inner) or [n] for n in ucs}
-    uc_h = {n: max(UC_MIN_H, int(math.ceil((LINE_H * len(uc_lines[n]) + 30) / 10)) * 10) for n in ucs}
+    uc_lines = {n: lines if max(len(line) for line in lines) <= inner else (textwrap.wrap(n, inner) or [n])
+                for n in ucs for lines in [_two_lines(n)]}
+    uc_h = {n: max(UC_MIN_H, int(math.ceil((LINE_H * len(uc_lines[n]) + 20) / 10)) * 10) for n in ucs}
+
+    # Use cases follow the primary actors that use them (a shared one sits between its actors),
+    # so each actor's lines fan out to a block of its own instead of crossing the others'
+    left = [a for a in actors if model.actors[a] == 'L']
+    users: dict[str, list[int]] = {n: [] for n in ucs}
+    for rel in model.rels:
+        for actor, other in ((rel.src, rel.dst), (rel.dst, rel.src)):
+            if actor in left and other.startswith('(') and other[1:-1] in users:
+                users[other[1:-1]].append(left.index(actor))
+
+    def by_actor(n: str) -> tuple[int, float, int]:
+        idx = users[n]
+        return (0, sum(idx) / len(idx), ucs.index(n)) if idx else (1, 0, ucs.index(n))
 
     # Ungrouped use cases first, then each group in the order written
-    ordered = [(g, [n for n in ucs if model.group_of.get(n, '') == g]) for g in ['', *model.groups]]
+    ordered = [(g, sorted((n for n in ucs if model.group_of.get(n, '') == g), key=by_actor))
+               for g in ['', *model.groups]]
     ordered = [(g, members) for g, members in ordered if members]
 
     uc_top: dict[str, int] = {}
     labels: list[tuple[str, int]] = []          # (group name, y)
     dividers: list[int] = []
-    y = TITLE_H
+    title_h = TITLE_H + (LINE_H if model.stereotype else 0)
+    y = title_h
     for i, (g, members) in enumerate(ordered):
         if i:
             dividers.append(y - UC_GAP + (UC_GAP + DIVIDER_GAP) // 2)   # midway to the next label
@@ -202,17 +228,20 @@ def render_usecase(model: UseCaseModel) -> ET.Element:
         other = rel.dst if rel.src == actor else rel.src
         return other[1:-1] if other.startswith('(') else None
 
-    desired: dict[str, float] = {}
+    # An actor with no use case of its own (only a generalization line) goes below the others
+    desired: dict[str, float | None] = {}
     for a in actors:
         mids = [uc_mid[u] for r in model.rels if r.kind == 'assoc' and a in (r.src, r.dst)
                 if (u := uc_of(r, a)) in uc_mid]
-        desired[a] = (sum(mids) / len(mids) if mids else (TITLE_H + stack_end) / 2) - ACTOR_H / 2
+        desired[a] = sum(mids) / len(mids) - ACTOR_H / 2 if mids else None
 
     actor_top: dict[str, int] = {}
     for side in 'LR':
         previous = None
-        for a in sorted((a for a in actors if model.actors[a] == side), key=lambda a: (desired[a], actors.index(a))):
-            top = max(snap(desired[a]), 40, (previous + ACTOR_STRIDE) if previous is not None else 0)
+        for a in sorted((a for a in actors if model.actors[a] == side),
+                        key=lambda a: (desired[a] is None, desired[a] or 0, actors.index(a))):
+            wanted = snap(desired[a]) if desired[a] is not None else 0
+            top = max(wanted, 40, (previous + ACTOR_STRIDE) if previous is not None else 0)
             actor_top[a] = previous = top
     actors_end = max([t + ACTOR_H + LINE_H for t in actor_top.values()] + [0])
     height = snap(max(stack_end, actors_end) + PAD_B)
@@ -256,8 +285,11 @@ def render_usecase(model: UseCaseModel) -> ET.Element:
     left_end = x_left + (widths['L'] if has['L'] else 0)
     bx = snap(left_end + (OUTER_GAP if has['L'] else 0))
     title = model.system or model.title
+    caption = f'<b>{html.escape(title)}</b>'
+    if model.stereotype:
+        caption = f'&laquo;{html.escape(model.stereotype)}&raquo;<br>{caption}'
     right_room = (LANE_BASE + LANE_STEP * (uc_lane_count - 1) + 50) if uc_lane_count else PAD_L
-    bw = snap(max(PAD_L + uc_w + right_room, int(len(title) * 8.5) + 40))
+    bw = snap(max(PAD_L + uc_w + right_room, int(max(len(title), len(model.stereotype) + 2) * 8) + 40))
     x_right = bx + bw + OUTER_GAP
 
     actor_x: dict[str, int] = {}
@@ -270,7 +302,7 @@ def render_usecase(model: UseCaseModel) -> ET.Element:
 
     # ── Cells ───────────────────────────────────────────────────────────────
     page = PageBuilder()
-    boundary = page.vertex(html.escape(title), BOUNDARY_STYLE, (bx, 0, bw, height))
+    boundary = page.vertex(caption, BOUNDARY_STYLE, (bx, 0, bw, height))
     cell: dict[str, str] = {}
     rect: dict[str, Rect] = {}
     # Labels and dividers span the ellipse column only, so no actor line crosses them

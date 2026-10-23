@@ -1,7 +1,8 @@
 # backend/generator.py
 """
-Draw.io generator — turns the parsed SQL schema into a .drawio file with two
-pages: a Chen-notation ERD and a UML class diagram (see class_diagram.py).
+Draw.io generator — turns the parsed SQL schema into a .drawio file with three
+pages: a Chen-notation ERD, a UML class diagram (see class_diagram.py) and a
+data dictionary (see data_dictionary.py).
 
 Chen Notation rules:
   • Entity    → Rectangle
@@ -20,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from class_diagram import build_class_page  # type: ignore
+from data_dictionary import build_dictionary_page  # type: ignore
 from layout import (  # type: ignore
     GRID, OPPOSITE, GridGeometry, Lane, LanePlanner, PageBuilder, Rect,
     assign_grid, build_mxfile, edge_style, find_free_spot, h_side, half_steps,
@@ -60,9 +62,10 @@ DIAMOND_STYLE = 'rhombus;whiteSpace=wrap;html=1;fontSize=11;'
 
 
 def generate_drawio_xml(schema: dict[str, Any]) -> str:
-    """Generate a .drawio file with an ERD page and a class diagram page from the parsed schema."""
+    """Generate a .drawio file with ERD, class diagram and data dictionary pages from the parsed schema."""
     return build_mxfile([('ERD', build_erd_page(schema)),
-                         ('Class Diagram', build_class_page(schema))])
+                         ('Class Diagram', build_class_page(schema)),
+                         ('Kamus Data', build_dictionary_page(schema))])
 
 
 # ── Relationship planning (grid units) ───────────────────────────────────────

@@ -1,125 +1,23 @@
 // frontend/src/components/UmlTextMode.jsx
 import React, { useRef, useState } from 'react';
 import axios from 'axios';
+import ChatPanel from './ChatPanel';
 import OutputPanel from './OutputPanel';
 import Tabs from './Tabs';
 import { apiErrorMessage } from '../drawio';
+import { EXAMPLES, SYNTAX } from '../examples';
 
 const DIAGRAM_TYPES = [
+  { id: 'usecase', label: 'Use Case' },
   { id: 'sequence', label: 'Sequence' },
   { id: 'activity', label: 'Activity' },
   { id: 'class', label: 'Class' },
 ];
 
-const EXAMPLES = {
-  sequence: `=== Edit Data Stok Bahan
-actor Admin
-boundary Sistem
-control BahanController
-entity Bahan
-
-Admin -> Sistem : Mengklik Tombol Edit
-Sistem --> Admin : Menampilkan Form Edit
-Admin -> Sistem : Mengisi Data
-Admin -> Sistem : Mengklik Tombol Simpan
-Sistem -> BahanController : Menjalankan Function update()
-BahanController -> Bahan : Menyimpan Data
-Bahan --> BahanController : Data Berhasil Diperbarui
-BahanController --> Sistem : Redirect ke Halaman Stok Bahan dengan Pesan Sukses
-Sistem --> Admin : Menampilkan Pesan Sukses dan Data Stok Bahan yang Diperbarui
-
-=== Login
-actor Admin
-boundary Sistem
-control AuthController
-entity User
-
-Admin -> Sistem : Mengisi email dan password
-Sistem -> AuthController : login(request)
-AuthController -> User : Mencari data user
-User --> AuthController : Data user
-alt Data valid
-  AuthController --> Sistem : Redirect ke dashboard
-  Sistem --> Admin : Menampilkan dashboard
-else Data tidak valid
-  AuthController --> Sistem : Pesan error
-  Sistem --> Admin : Menampilkan pesan error
-end
-`,
-  activity: `=== Login
-|Admin|
-start
-:Membuka halaman login;
-|Sistem|
-:Menampilkan form login;
-|Admin|
-:Mengisi email dan password;
-:Klik tombol masuk;
-|Sistem|
-:Validasi data;
-if (Data valid?) then (ya)
-  :Redirect ke dashboard;
-else (tidak)
-  :Menampilkan pesan error;
-  -> Mengisi email dan password
-endif
-stop
-`,
-  class: `=== Class Diagram
-class bahan {
-  - id : int
-  - nama_bahan : varchar
-  - satuan : varchar
-  + create()
-  + update()
-  + delete()
-}
-class stok_masuk {
-  - id : int
-  - jumlah : decimal
-  - tanggal : date
-}
-class bahan_kering {
-  - kadar_air : decimal
-}
-
-bahan "1" -- "0..*" stok_masuk : memiliki
-bahan <|-- bahan_kering
-`,
-};
-
-// Syntax guide per type: [what you write, what it does]
-const SYNTAX = {
-  sequence: [
-    ['=== Nama Halaman', 'mulai diagram baru di halaman sendiri'],
-    ['actor Admin', 'peserta; juga boundary, control, entity'],
-    ['A -> B : pesan', 'pesan, garis penuh'],
-    ['A --> B : balasan', 'balasan, garis putus-putus'],
-    ['alt kondisi / else kondisi / end', 'cabang; juga loop … end dan opt … end'],
-  ],
-  activity: [
-    ['=== Nama Halaman', 'mulai diagram baru di halaman sendiri'],
-    ['|Admin|', 'pindah swimlane'],
-    ['start / stop', 'titik mulai dan selesai'],
-    [':Mengisi data;', 'aksi'],
-    ['if (valid?) then (ya) / else (tidak) / endif', 'keputusan'],
-    ['fork / fork again / end fork', 'langkah paralel'],
-    ['-> Mengisi data', 'panah kembali ke aksi sebelumnya'],
-  ],
-  class: [
-    ['=== Nama Halaman', 'mulai diagram baru di halaman sendiri'],
-    ['class Nama { - id : int  + simpan() }', 'kelas dengan atribut dan method'],
-    ['A "1" -- "0..*" B : nama', 'asosiasi dengan multiplicity'],
-    ['A <|-- B', 'B turunan dari A'],
-    ['A *-- B  /  A o-- B', 'komposisi / agregasi'],
-    ['A ..> B', 'dependency'],
-  ],
-};
-
 const LINE_PX = 20;   // editor line height (leading-5)
 
 export default function UmlTextMode() {
-  const [type, setType] = useState('sequence');
+  const [type, setType] = useState('usecase');
   // Each diagram type keeps its own text, starting from its example
   const [texts, setTexts] = useState(EXAMPLES);
   const [status, setStatus] = useState('idle');
@@ -138,11 +36,21 @@ export default function UmlTextMode() {
     setError('');
   };
 
-  const handleGenerate = async () => {
+  // The chat wrote new text: put it in the editor and show the diagram it already built
+  const applyGenerated = (newText, data) => {
+    setTexts((prev) => ({ ...prev, [type]: newText }));
+    const name = data.pages.length === 1 ? data.pages[0] : `${type}-diagram`;
+    setResult({ ...data, openUrl: data.open_url, fileName: `${name}.drawio` });
+    setError('');
+    setStatus('done');
+  };
+
+  const handleGenerate = async (overrideText) => {
+    const textToRun = typeof overrideText === 'string' ? overrideText : text;
     setStatus('loading');
     setError('');
     try {
-      const { data } = await axios.post('/api/uml', { type, text });
+      const { data } = await axios.post('/api/uml', { type, text: textToRun });
       const name = data.pages.length === 1 ? data.pages[0] : `${type}-diagram`;
       setResult({ ...data, openUrl: data.open_url, fileName: `${name}.drawio` });
       setStatus('done');
@@ -151,6 +59,11 @@ export default function UmlTextMode() {
       setError(apiErrorMessage(err));
       setStatus('error');
     }
+  };
+
+  const handleApplyFix = (fixedText) => {
+    setTexts((prev) => ({ ...prev, [type]: fixedText }));
+    handleGenerate(fixedText);
   };
 
   // Select a line in the editor, e.g. when an error is clicked
@@ -174,6 +87,8 @@ export default function UmlTextMode() {
         <Tabs items={DIAGRAM_TYPES} value={type} onChange={switchType} label="Jenis diagram" idPrefix="uml-type" />
 
         <div role="tabpanel" id="uml-type-panel" aria-labelledby={`uml-type-tab-${type}`} className="pt-4">
+          <ChatPanel type={type} editorText={text} onGenerated={applyGenerated} />
+
           <label htmlFor="uml-editor" className="sr-only">Teks diagram {type}</label>
           {/* The focus ring goes around the whole editor box; on the textarea alone it would be clipped */}
           <div className="flex rounded-md border border-edge bg-panel overflow-hidden focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
@@ -226,6 +141,9 @@ export default function UmlTextMode() {
         error={error}
         emptyText="Belum ada diagram. Tulis atau tempel teks di editor, lalu tekan Buat diagram."
         onJumpToLine={jumpToLine}
+        diagramType={type}
+        diagramText={text}
+        onApplyFix={handleApplyFix}
       />
     </div>
   );

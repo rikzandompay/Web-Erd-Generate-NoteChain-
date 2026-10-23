@@ -26,6 +26,10 @@ export default function SqlMode() {
       // The draw.io link is packed in the browser; it shows up once ready
       const openUrl = await drawioUrl(xml);
       setResult((prev) => (prev?.xml === xml ? { ...prev, openUrl } : prev));
+      // Markdown and CSV of the data dictionary for pasting into a report; the diagram does not wait for it
+      axios.post('/api/dictionary', formData)
+        .then(({ data }) => setResult((prev) => (prev?.xml === xml ? { ...prev, dictionary: data } : prev)))
+        .catch(() => { /* the Kamus Data page is in the file anyway; only the copy buttons are missing */ });
     } catch (err) {
       setResult(null);
       setError(apiErrorMessage(err));
@@ -38,7 +42,7 @@ export default function SqlMode() {
       <section aria-labelledby="sql-input-heading" className="min-w-0 rounded-[10px] border border-line bg-panel p-4 sm:p-5">
         <h2 id="sql-input-heading" className="text-base font-semibold">File SQL</h2>
         <p className="mt-1 mb-4 text-sm text-muted max-w-prose">
-          File .sql berisi CREATE TABLE, boleh dengan ALTER TABLE untuk foreign key. Hasilnya dua halaman: ERD notasi Chen dan Class Diagram.
+          File .sql berisi CREATE TABLE, boleh dengan ALTER TABLE untuk key. Hasilnya tiga halaman: ERD notasi Chen, Class Diagram, dan Kamus Data. Komentar di samping kolom (-- keterangan) menjadi kolom Keterangan.
         </p>
 
         <DragDropArea

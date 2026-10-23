@@ -133,7 +133,12 @@ def parse_activity(title: str, lines: list[tuple[int, str]]) -> tuple[ActivityMo
                 items().append(Step('action', body, lane, pending[0]))
                 pending = None
             continue
-        if not text or text.startswith("'"):
+        if not text or text.startswith("'") or text.startswith('//'):
+            continue
+        lower = text.lower()
+        if lower.startswith(('@startuml', '@enduml', 'title ', 'skinparam', 'scale', 'footer', 'header')):
+            continue
+        if lower.startswith(('note left', 'note right', 'note over')):
             continue
 
         if m := _LANE.match(text):

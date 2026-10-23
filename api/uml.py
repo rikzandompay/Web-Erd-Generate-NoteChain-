@@ -15,12 +15,14 @@ from activity import build_activity_page  # type: ignore
 from class_diagram import build_class_text_page  # type: ignore
 from layout import build_mxfile  # type: ignore
 from sequence import build_sequence_page  # type: ignore
+from usecase import build_usecase_page  # type: ignore
 
 # Diagram type → builder(title, numbered lines) → (mxGraphModel | None, [(line, reason)])
 DIAGRAM_BUILDERS = {
     'sequence': build_sequence_page,
     'activity': build_activity_page,
     'class': build_class_text_page,
+    'usecase': build_usecase_page,
 }
 
 _PAGE_HEADER = re.compile(r'^\s*===\s*(.*?)\s*$')
@@ -31,12 +33,24 @@ def split_pages(text: str) -> list[tuple[str, list[tuple[int, str]]]]:
     pages: list[tuple[str, list[tuple[int, str]]]] = []
     for lineno, line in enumerate(text.splitlines(), start=1):
         header = _PAGE_HEADER.match(line)
+        stripped = line.strip()
         if header:
             pages.append((header.group(1) or f'Diagram {len(pages) + 1}', []))
         elif pages:
+            # If the current page still has the default "Diagram X" name and a title is given, adopt it
+            if pages[-1][0].startswith('Diagram ') and stripped.lower().startswith('title '):
+                t_val = stripped[6:].strip()
+                if t_val:
+                    pages[-1] = (t_val, pages[-1][1])
             pages[-1][1].append((lineno, line))
-        elif line.strip() and not line.strip().startswith("'"):   # text before the first === header
-            pages.append(('Diagram 1', [(lineno, line)]))
+        elif stripped and not stripped.startswith("'") and not stripped.startswith('//'):
+            # Text before the first === header
+            initial_name = 'Diagram 1'
+            if stripped.lower().startswith('title '):
+                t_val = stripped[6:].strip()
+                if t_val:
+                    initial_name = t_val
+            pages.append((initial_name, [(lineno, line)]))
     return pages
 
 

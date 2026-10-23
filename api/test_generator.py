@@ -55,7 +55,7 @@ def _overlap(a, b):
 
 def test_two_pages(generated):
     _, _, pages = generated
-    assert list(pages) == ['ERD', 'Class Diagram']
+    assert list(pages) == ['ERD', 'Class Diagram', 'Kamus Data']
 
 
 def test_shapes_on_grid(generated):

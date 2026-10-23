@@ -124,6 +124,13 @@ def parse_sequence(title: str, lines: list[tuple[int, str]]) -> tuple[SequenceMo
         text = raw.strip()
         if not text or text.startswith("'") or text.startswith('//'):
             continue
+        lower = text.lower()
+        if lower.startswith(('@startuml', '@enduml', 'title ', 'skinparam', 'autonumber', 'scale')):
+            continue
+        if lower.startswith(('activate ', 'deactivate ', 'activate', 'deactivate')):
+            continue
+        if lower.startswith(('note left', 'note right', 'note over')):
+            continue
 
         if _END.match(text):
             if open_fragments:

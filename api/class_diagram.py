@@ -185,6 +185,11 @@ def parse_class_text(lines: list[tuple[int, str]]) -> tuple[list[UmlClass], list
         text = _strip_comment(raw).strip()
         if not text:
             continue
+        lower = text.lower()
+        if lower.startswith(('@startuml', '@enduml', 'title ', 'skinparam', 'scale')):
+            continue
+        if lower.startswith(('package ', 'end package', 'namespace ', 'end namespace')):
+            continue
 
         if body:
             if text == '}':

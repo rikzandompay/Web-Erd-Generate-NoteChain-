@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
+import GuideMode from './components/GuideMode';
 import SqlMode from './components/SqlMode';
 import Tabs from './components/Tabs';
 import ThemeToggle from './components/ThemeToggle';
 import UmlTextMode from './components/UmlTextMode';
+import UserGuideWalkthrough from './components/UserGuideWalkthrough';
 
 const MODES = [
   { id: 'sql', label: 'File SQL' },
   { id: 'uml', label: 'Teks UML' },
+  { id: 'guide', label: 'Panduan' },
 ];
 
 function App() {
   const [mode, setMode] = useState('sql');
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -19,7 +23,17 @@ function App() {
           <h1 className="text-base sm:text-lg font-semibold">
             ERD Generator <span className="font-normal text-muted">by Rikzan</span>
           </h1>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowWalkthrough(true)}
+              className="min-h-[44px] px-3 text-sm font-medium text-muted hover:text-ink rounded-md hover:bg-desk transition-colors"
+              aria-label="Buka panduan pengguna interaktif"
+            >
+              Panduan
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -38,6 +52,9 @@ function App() {
           <div hidden={mode !== 'uml'}>
             <UmlTextMode />
           </div>
+          <div hidden={mode !== 'guide'}>
+            <GuideMode onOpenMode={setMode} />
+          </div>
         </div>
       </main>
 
@@ -46,6 +63,13 @@ function App() {
           Dibuat oleh Rikzan. File dan teks diproses langsung, tidak disimpan di server.
         </p>
       </footer>
+
+      {showWalkthrough && (
+        <UserGuideWalkthrough
+          onClose={() => setShowWalkthrough(false)}
+          onSwitchMode={setMode}
+        />
+      )}
     </div>
   );
 }

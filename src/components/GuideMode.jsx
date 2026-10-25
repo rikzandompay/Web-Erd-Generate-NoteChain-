@@ -14,7 +14,7 @@ const SECTIONS = [
 const TYPE_NOTES = {
   usecase: {
     title: 'Use case diagram',
-    text: 'Use case dibaca dari kiri ke kanan, Input lalu Proses lalu Output: aktor utama di kiri, use case di dalam kotak sistem di tengah, dan aktor sekunder (ditandai <<sekunder>>, misalnya Bank atau Payment Gateway) di kanan. Use case diurutkan otomatis per aktor sehingga garis tidak bersilangan, dan nama use case dibagi dua baris. Setiap use case cukup dihubungkan ke aktornya; include dan extend tidak dipakai.',
+    text: 'Use case dibaca dari kiri ke kanan, Input lalu Proses lalu Output: aktor utama di kiri, use case di dalam kotak sistem di tengah, dan aktor sekunder (ditandai <<sekunder>>, misalnya Bank atau Payment Gateway) di kanan. Urutan use case dicari otomatis supaya garis aktor sesedikit mungkin bersilangan (use case milik satu aktor dikumpulkan berdekatan, tidak peduli urutan penulisanmu), dan nama use case dibagi dua baris. Use case yang dipakai bersama beberapa aktor kadang masih menyisakan satu atau dua persilangan. Setiap use case cukup dihubungkan ke aktornya; include dan extend tidak dipakai.',
   },
   sequence: {
     title: 'Sequence diagram',
@@ -117,6 +117,12 @@ export default function GuideMode({ onOpenMode }) {
             <li>Kolom yang bisa NULL, nilai <code className="font-mono">DEFAULT</code>, dan <code className="font-mono">COMMENT '...'</code>.</li>
             <li>Komentar <code className="font-mono">/* */</code> dan komentar <code className="font-mono">--</code> di baris sendiri diabaikan. Komentar <code className="font-mono">--</code> di <strong>samping</strong> kolom menjadi isi kolom Keterangan.</li>
           </ul>
+          <p className="m-0 font-semibold">Kode awal dari skema</p>
+          <ul className="m-0 list-disc space-y-1 pl-5">
+            <li>Setelah memilih file, bagian <strong>Kode awal dari skema</strong> membuat kode tanpa AI: <strong>Laravel</strong> (migration berurutan dari tabel induk dan model Eloquent dengan relasi), <strong>Prisma</strong> (schema.prisma untuk PostgreSQL, MySQL, atau SQLite), atau <strong>SQLAlchemy</strong> (models.py).</li>
+            <li>Primary key angka tunggal dianggap auto-increment. Nama relasi diambil dari kolom foreign key: <code className="font-mono">penulis_id</code> menjadi <code className="font-mono">penulis()</code>.</li>
+            <li>Relasi melingkar ditaruh di migration terpisah di akhir supaya urutan pembuatan tabel tidak gagal. Lihat isi tiap file, lalu <strong>Unduh semua (.zip)</strong> dengan struktur folder yang siap disalin ke proyek.</li>
+          </ul>
           <p className="m-0 font-semibold">Halaman Kamus Data</p>
           <ul className="m-0 list-disc space-y-1 pl-5">
             <li>Satu tabel per tabel SQL dengan kolom No, Nama Kolom, Tipe Data, Kunci (PK atau FK ke tabel.kolom), Null, Default, dan Keterangan.</li>
@@ -165,6 +171,8 @@ export default function GuideMode({ onOpenMode }) {
             <li><strong>Task.</strong> Task kecil berurutan sesuai dependensi, lalu <strong>Unduh PRD.md</strong> atau <strong>Salin Markdown</strong>.</li>
           </ol>
           <ul className="m-0 list-disc space-y-1 pl-5">
+            <li><strong>Buat paket diagram lengkap</strong> di layar PRD membuat satu file .drawio berisi ERD, Class Diagram, Kamus Data, Use Case, serta Sequence dan Activity untuk setiap fitur Fase 1. Sequence dan Activity ditulis AI dan diperiksa parser; halaman yang masih salah disebutkan di panel Hasil.</li>
+            <li><strong>Kode awal dari skema</strong> di layar PRD membuat migration dan model sesuai template yang dipilih.</li>
             <li><strong>Kembali</strong> dan maju lagi tidak memanggil AI ulang. AI baru dipanggil lagi kalau jawabanmu di langkah sebelumnya berubah.</li>
             <li>Draf tersimpan di browser ini; <strong>Mulai PRD baru</strong> menghapusnya. Bagian "Asumsi AI" berisi hal yang ditebak AI, jadi periksa sebelum dipakai.</li>
           </ul>

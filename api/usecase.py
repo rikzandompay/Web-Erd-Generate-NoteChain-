@@ -173,6 +173,80 @@ def _two_lines(name: str) -> list[str]:
     return list(min(splits, key=lambda pair: (max(len(pair[0]), len(pair[1])), len(pair[0]))))
 
 
+# ── Ordering: fewest crossing lines ──────────────────────────────────────────
+
+def _crossings_and_spread(order: list[str], links: list[tuple[str, str, str]], actor_index: dict[str, int]) -> tuple[int, int, int]:
+    """
+    (crossings, swapped, spread) of drawing `order` top to bottom, with every actor placed at the
+    average height of its use cases on its own side. `links` are (actor, side, use case).
+    Two lines from different actors cross when their actors and their use cases are in
+    opposite orders. When orders tie, `swapped` prefers the actors in the order they were written,
+    then `spread` (how far apart each actor's use cases are) prefers tidier fans.
+    """
+    position = {n: i for i, n in enumerate(order)}
+    crossings = spread = swapped = 0
+    for side in 'LR':
+        by_actor: dict[str, list[int]] = {}
+        for actor, s, uc in links:
+            if s == side:
+                by_actor.setdefault(actor, []).append(position[uc])
+        ranked = sorted(by_actor, key=lambda a: (sum(by_actor[a]) / len(by_actor[a]), actor_index[a]))
+        edges = [(rank, p) for rank, a in enumerate(ranked) for p in by_actor[a]]
+        crossings += sum(1 for i, (r1, p1) in enumerate(edges) for r2, p2 in edges[i + 1:]
+                         if (r1 < r2 and p1 > p2) or (r1 > r2 and p1 < p2))
+        swapped += sum(1 for i, a in enumerate(ranked) for b in ranked[i + 1:] if actor_index[a] > actor_index[b])
+        spread += sum(max(v) - min(v) for v in by_actor.values())
+    return crossings, swapped, spread
+
+
+def arrange_use_cases(blocks: list[list[str]], model: 'UseCaseModel') -> list[list[str]]:
+    """
+    The use cases of each block (a group, or the ungrouped ones) in the order that draws the fewest
+    crossing lines. Starts from a few sensible orders and moves one use case at a time to any place
+    in its own block while that lowers the count; the declared order wins ties, so a tidy text stays put.
+    """
+    actor_index = {a: i for i, a in enumerate(model.actors)}
+    names = {n for block in blocks for n in block}
+    links = [(actor, model.actors[actor], other[1:-1])
+             for rel in model.rels
+             for actor, other in ((rel.src, rel.dst), (rel.dst, rel.src))
+             if actor in model.actors and other.startswith('(') and other[1:-1] in names]
+    if not links:
+        return blocks
+
+    def cost(candidate: list[list[str]]) -> tuple[int, int, int]:
+        return _crossings_and_spread([n for block in candidate for n in block], links, actor_index)
+
+    def barycentre(block: list[str]) -> list[str]:
+        left = {a: i for i, a in enumerate(a for a in model.actors if model.actors[a] == 'L')}
+        mean = {n: [left[a] for a, s, uc in links if uc == n and s == 'L'] for n in block}
+        return sorted(block, key=lambda n: (0, sum(mean[n]) / len(mean[n]), block.index(n)) if mean[n] else (1, 0, block.index(n)))
+
+    seeds = [blocks, [barycentre(b) for b in blocks], [list(reversed(b)) for b in blocks]]
+    best, best_cost = blocks, cost(blocks)
+    for seed in seeds:
+        current, current_cost = [list(b) for b in seed], cost(seed)
+        for _ in range(40):
+            improved = False
+            for b in range(len(current)):
+                for name in list(current[b]):
+                    rest = [n for n in current[b] if n != name]
+                    for at in range(len(rest) + 1):
+                        trial_block = rest[:at] + [name] + rest[at:]
+                        if trial_block == current[b]:
+                            continue
+                        trial = current[:b] + [trial_block] + current[b + 1:]
+                        trial_cost = cost(trial)
+                        if trial_cost < current_cost:
+                            current, current_cost, improved = trial, trial_cost, True
+                            break
+            if not improved:
+                break
+        if current_cost < best_cost:
+            best, best_cost = current, current_cost
+    return best
+
+
 # ── Layout & render ──────────────────────────────────────────────────────────
 
 def render_usecase(model: UseCaseModel) -> ET.Element:
@@ -187,22 +261,13 @@ def render_usecase(model: UseCaseModel) -> ET.Element:
                 for n in ucs for lines in [_two_lines(n)]}
     uc_h = {n: max(UC_MIN_H, int(math.ceil((LINE_H * len(uc_lines[n]) + 20) / 10)) * 10) for n in ucs}
 
-    # Use cases follow the primary actors that use them (a shared one sits between its actors),
-    # so each actor's lines fan out to a block of its own instead of crossing the others'
-    left = [a for a in actors if model.actors[a] == 'L']
-    users: dict[str, list[int]] = {n: [] for n in ucs}
-    for rel in model.rels:
-        for actor, other in ((rel.src, rel.dst), (rel.dst, rel.src)):
-            if actor in left and other.startswith('(') and other[1:-1] in users:
-                users[other[1:-1]].append(left.index(actor))
-
-    def by_actor(n: str) -> tuple[int, float, int]:
-        idx = users[n]
-        return (0, sum(idx) / len(idx), ucs.index(n)) if idx else (1, 0, ucs.index(n))
-
-    # Ungrouped use cases first, then each group in the order written
-    ordered = [(g, sorted((n for n in ucs if model.group_of.get(n, '') == g), key=by_actor))
-               for g in ['', *model.groups]]
+    # Ungrouped use cases first, then each group in the order written; inside each, the order
+    # with the fewest crossing lines (see arrange_use_cases)
+    blocks = [[n for n in ucs if model.group_of.get(n, '') == g] for g in ['', *model.groups]]
+    names = ['', *model.groups]
+    kept = [(g, block) for g, block in zip(names, blocks) if block]
+    arranged = arrange_use_cases([block for _, block in kept], model)
+    ordered = [(g, block) for (g, _), block in zip(kept, arranged)]
     ordered = [(g, members) for g, members in ordered if members]
 
     uc_top: dict[str, int] = {}

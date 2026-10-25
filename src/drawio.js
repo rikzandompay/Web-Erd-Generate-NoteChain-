@@ -7,16 +7,30 @@ export function pageNames(xml) {
   return [...doc.querySelectorAll('diagram')].map((d) => d.getAttribute('name') || 'Halaman');
 }
 
-/** Save the file through the browser's download. */
-export function downloadFile(xml, fileName, type = 'application/xml') {
-  const url = URL.createObjectURL(new Blob([xml], { type }));
+/**
+ * A file name that is different every time: "kasir-kopi_paket-diagram.drawio" becomes
+ * "kasir-kopi_paket-diagram_20261025-143005.drawio", so a second download never turns into "(1)".
+ */
+export function uniqueFileName(fileName, now = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const safe = fileName.replace(/[\\/:*?"<>|]/g, '-');
+  const dot = safe.lastIndexOf('.');
+  return dot > 0 ? `${safe.slice(0, dot)}_${stamp}${safe.slice(dot)}` : `${safe}_${stamp}`;
+}
+
+/** Save the file through the browser's download; returns the name it was saved under. */
+export function downloadFile(content, fileName, type = 'application/xml') {
+  const name = uniqueFileName(fileName);
+  const url = URL.createObjectURL(new Blob([content], { type }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = fileName.replace(/[\\/:*?"<>|]/g, '-');
+  link.download = name;
   document.body.appendChild(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  return name;
 }
 
 /**

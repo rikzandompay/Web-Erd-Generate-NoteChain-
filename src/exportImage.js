@@ -6,6 +6,7 @@
 // browsers refuse to turn into a PNG ("tainted canvas"), so each label's plain
 // <text> fallback, which draw.io writes next to it, is used instead.
 
+import { downloadFile } from './drawio';
 import { loadViewer } from './viewer';
 
 const RENDER_WAIT_MS = 1200;
@@ -50,19 +51,12 @@ export async function renderPageSvg(xml, page) {
 }
 
 function save(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName.replace(/[\\/:*?"<>|]/g, '-');
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  return downloadFile(blob, fileName, blob.type);
 }
 
 export async function downloadSvg(xml, page, baseName) {
   const { svg } = await renderPageSvg(xml, page);
-  save(new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}`], { type: 'image/svg+xml' }), `${baseName}.svg`);
+  return save(new Blob([`<?xml version="1.0" encoding="UTF-8"?>\n${svg}`], { type: 'image/svg+xml' }), `${baseName}.svg`);
 }
 
 /** PNG at `scale` times the diagram's size (2 or 3 is sharp enough for a printed report). */
@@ -89,5 +83,5 @@ export async function downloadPng(xml, page, baseName, scale) {
   ctx.drawImage(image, 0, 0, width, height);
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('PNG terlalu besar untuk dibuat browser. Coba skala lebih kecil atau unduh SVG.');
-  save(blob, `${baseName}-${scale}x.png`);
+  return save(blob, `${baseName}-${scale}x.png`);
 }

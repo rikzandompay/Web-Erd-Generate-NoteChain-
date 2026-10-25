@@ -10,5 +10,10 @@ export default defineConfig({
     proxy: {
       '/api': process.env.API_PROXY || 'http://localhost:8000',
     },
+    // The Python side (api/, its virtualenvs and caches) is not frontend code; watching its
+    // thousands of files exhausts the system's file watcher limit and stops the dev server
+    watch: {
+      ignored: ['**/api/**', '**/.venv/**', '**/venv/**', '**/__pycache__/**', '**/examples/**'],
+    },
   },
 })

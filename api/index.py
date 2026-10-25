@@ -3,18 +3,22 @@
 FastAPI application
   • POST /api/generate — .sql file upload → .drawio (ERD, class diagram, data dictionary) download
   • POST /api/dictionary — .sql file upload → the data dictionary as Markdown and CSV
+  • POST /api/code     — .sql file upload → starter code (Laravel, Prisma, SQLAlchemy), as JSON or a .zip
   • POST /api/uml      — UML text (sequence, …) → JSON with the .drawio XML, pages and line errors
   • POST /api/chat     — a plain-language request → UML text from an AI model, built into a diagram
   • POST /api/prd/...  — idea → plan → tasks: a PRD in three AI stages, plus its Markdown (see prd.py)
+  • POST /api/prd/diagrams — every diagram of a PRD in one .drawio (see prd_diagrams.py)
 """
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile  # type: ignore
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from fastapi.responses import Response  # type: ignore
 from pydantic import BaseModel  # type: ignore
 
-import sys
+import io
 import os
+import sys
+import zipfile
 from datetime import date
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -24,6 +28,8 @@ from chat import ChatError, chat_generate  # type: ignore
 from data_dictionary import to_csv as dictionary_csv, to_markdown as dictionary_markdown  # type: ignore
 from uml import DIAGRAM_BUILDERS, generate_uml  # type: ignore
 from fixer import fix_text  # type: ignore
+from codegen import TARGETS as CODE_TARGETS, generate_code  # type: ignore
+from prd_diagrams import build_diagram_bundle  # type: ignore
 from prd import prd_idea, prd_plan, prd_questions, prd_tasks, render_prd_markdown, slug  # type: ignore
 
 app = FastAPI(title='SQL to ERD Generator')
@@ -101,6 +107,33 @@ async def data_dictionary(file: UploadFile = File(...)):
         'csv': dictionary_csv(schema),
         'tables': len(schema['tables']),
     }
+
+
+async def code_files(file: UploadFile, target: str, database: str) -> tuple[list[dict], str]:
+    if target not in CODE_TARGETS:
+        raise HTTPException(status_code=400, detail=f'Target "{target}" belum didukung. Pilih: {", ".join(CODE_TARGETS)}.')
+    schema = await read_schema(file)
+    base = file.filename.rsplit('.', 1)[0] if '.' in file.filename else file.filename
+    return generate_code(schema, target, file.filename, database, date.today()), base
+
+
+@app.post('/api/code')
+async def starter_code(file: UploadFile = File(...), target: str = Form(...), database: str = Form('postgresql')):
+    """Starter code from a .sql file, as a list of files to preview."""
+    files, base = await code_files(file, target, database)
+    return {'files': files, 'zip_name': f'{base}-{target}.zip'}
+
+
+@app.post('/api/code/zip')
+async def starter_code_zip(file: UploadFile = File(...), target: str = Form(...), database: str = Form('postgresql')):
+    """The same files in one .zip, keeping their folders."""
+    files, base = await code_files(file, target, database)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for f in files:
+            archive.writestr(f['path'], f['content'])
+    return Response(content=buffer.getvalue(), media_type='application/zip',
+                    headers={'Content-Disposition': f'attachment; filename="{base}-{target}.zip"'})
 
 
 class UmlRequest(BaseModel):
@@ -208,6 +241,15 @@ async def prd_tasks_stage(request: Request, body: PrdRequest):
     """Stage 3: atomic tasks in dependency order."""
     try:
         return prd_tasks(body.input, body.idea or {}, body.plan or {}, visitor_of(request))
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+@app.post('/api/prd/diagrams')
+async def prd_diagram_bundle(request: Request, body: PrdRequest):
+    """ERD, class, data dictionary, use case, and a sequence and activity diagram per MVP feature."""
+    try:
+        return build_diagram_bundle(body.input, body.idea or {}, body.plan or {}, visitor_of(request))
     except ChatError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
 

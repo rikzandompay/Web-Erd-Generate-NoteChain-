@@ -1,6 +1,7 @@
 // frontend/src/components/SqlMode.jsx
 import React, { useState } from 'react';
 import axios from 'axios';
+import CodeExport from './CodeExport';
 import DragDropArea from './DragDropArea';
 import OutputPanel from './OutputPanel';
 import { apiErrorMessage, drawioUrl, pageNames } from '../drawio';
@@ -59,6 +60,16 @@ export default function SqlMode() {
         >
           {status === 'loading' ? 'Membuat diagram…' : 'Buat diagram'}
         </button>
+
+        {file && (
+          <div className="mt-6 border-t border-line pt-5">
+            <h3 className="m-0 text-sm font-semibold">Kode awal dari skema</h3>
+            <p className="mt-1 mb-3 text-sm text-muted max-w-prose">
+              Migration dan model dari tabel dan relasi di file ini, siap ditempel ke proyek. Dibuat tanpa AI.
+            </p>
+            <CodeExport file={file} idPrefix="sql-code" />
+          </div>
+        )}
       </section>
 
       <OutputPanel

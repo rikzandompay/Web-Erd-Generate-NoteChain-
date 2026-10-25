@@ -365,3 +365,94 @@ def test_names_go_on_two_balanced_lines_in_equal_ellipses():
 def test_output_is_another_name_for_the_right_side():
     model, _ = parse_usecase('x', list(enumerate(['(A)', 'actor Pimpinan <<output>>', 'Pimpinan --> (A)'], start=1)))
     assert model.actors == {'Pimpinan': 'R'}
+
+
+# ── Fewest crossing lines ────────────────────────────────────────────────────
+
+SDM = """\
+=== SDM Terpadu
+system SDM Terpadu {
+  (Kelola Data Karyawan)
+  (Atur Jadwal Shift)
+  (Hitung Gaji)
+  (Clock In Out)
+  (Validasi Lembur)
+  (Ajukan Cuti)
+  (Approve Cuti)
+  (Unduh Slip Gaji)
+  (Rekap Gaji Bulanan)
+}
+actor Admin HRD
+actor Karyawan
+actor Atasan
+actor Manajemen
+actor Bank <<sekunder>>
+Admin HRD --> (Kelola Data Karyawan)
+Admin HRD --> (Atur Jadwal Shift)
+Admin HRD --> (Hitung Gaji)
+Admin HRD --> (Validasi Lembur)
+Admin HRD --> (Approve Cuti)
+Admin HRD --> (Rekap Gaji Bulanan)
+Karyawan --> (Clock In Out)
+Karyawan --> (Ajukan Cuti)
+Karyawan --> (Unduh Slip Gaji)
+Atasan --> (Validasi Lembur)
+Atasan --> (Approve Cuti)
+Manajemen --> (Rekap Gaji Bulanan)
+Bank --> (Rekap Gaji Bulanan)
+"""
+
+
+def _line_crossings(text):
+    root = ET.fromstring(generate_uml('usecase', text)['xml']).find('diagram/mxGraphModel/root')
+    _, rects = _cells(root)
+    segments = [_ends(e, rects) for e in root if e.get('edge') == '1']
+
+    def side(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    return sum(1 for (p1, p2), (q1, q2) in itertools.combinations(segments, 2)
+               if not ({p1, p2} & {q1, q2})
+               and side(p1, p2, q1) * side(p1, p2, q2) < 0 and side(q1, q2, p1) * side(q1, q2, p2) < 0)
+
+
+def test_shared_use_cases_are_ordered_to_avoid_crossings():
+    # Written in the order of the first, messy picture: 12 crossings when drawn as written
+    assert _line_crossings(SDM) <= 1
+
+
+def test_each_actors_use_cases_end_up_side_by_side():
+    root = ET.fromstring(generate_uml('usecase', SDM)['xml']).find('diagram/mxGraphModel/root')
+    _, rects = _cells(root)
+    order = [_text(c) for c in sorted(_usecases(root), key=lambda c: rects[c.get('id')][1])]
+    karyawan = {'Clock In Out', 'Ajukan Cuti', 'Unduh Slip Gaji'}
+    rows = sorted(order.index(n) for n in karyawan)
+    assert rows[-1] - rows[0] == 2                                   # three in a row, nothing in between
+
+
+def test_a_mixed_up_text_is_sorted_and_a_tidy_one_is_left_alone():
+    from usecase import arrange_use_cases  # type: ignore
+    model, _ = parse_usecase('x', split_pages(ATM)[0][1])
+    tidy = ['Cek Saldo', 'Setor Tunai', 'Tarik Tunai', 'Transfer Dana', 'Perawatan Mesin', 'Perbaikan Mesin']
+    assert list(model.usecases) != tidy                              # the ATM text is written mixed up
+    assert arrange_use_cases([list(model.usecases)], model) == [tidy]
+    assert arrange_use_cases([tidy], model) == [tidy]
+
+
+def test_groups_keep_their_use_cases_and_a_big_diagram_is_fast():
+    import random
+    import time
+    random.seed(7)
+    ucs = [f'Fitur {i}' for i in range(24)]
+    actors = [f'Aktor {i}' for i in range(6)]
+    lines = ['=== Besar', 'system Besar {', '[Input]', *[f'  ({u})' for u in ucs[:12]], '[Output]', *[f'  ({u})' for u in ucs[12:]], '}',
+             *[f'actor {a}' for a in actors[:-1]], f'actor {actors[-1]} <<sekunder>>']
+    for u in ucs:
+        for a in random.sample(actors, random.randint(1, 3)):
+            lines.append(f'{a} --> ({u})')
+    started = time.time()
+    root = ET.fromstring(generate_uml('usecase', '\n'.join(lines))['xml']).find('diagram/mxGraphModel/root')
+    assert time.time() - started < 5
+    _, rects = _cells(root)
+    y = {_text(c): rects[c.get('id')][1] for c in _usecases(root)}
+    assert max(y[u] for u in ucs[:12]) < min(y[u] for u in ucs[12:])  # [Input] stays above [Output]

@@ -1,7 +1,8 @@
 // frontend/src/components/PrdMode.jsx
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { ArrowRight, Download } from 'lucide-react';
+import CodeExport from './CodeExport';
 import OutputPanel from './OutputPanel';
 import { apiErrorMessage, downloadFile, drawioUrl, pageNames } from '../drawio';
 
@@ -29,6 +30,20 @@ const STACK_OPTIONS = {
   deployment: ['Vercel', 'Railway', 'VPS', 'Coolify', 'Docker'],
 };
 const STACK_LABELS = { frontend: 'Frontend', backend: 'Backend', database: 'Database', deployment: 'Deployment' };
+// Starter code that fits each template (CodeExport); 'custom' is read from the backend's name
+const CODE_TARGET = { next: 'prisma', 'react-fastapi': 'sqlalchemy', laravel: 'laravel', flutter: 'prisma' };
+function codeTarget(input) {
+  if (CODE_TARGET[input.template]) return CODE_TARGET[input.template];
+  const backend = input.stack.backend.toLowerCase();
+  if (backend.includes('laravel') || backend.includes('php')) return 'laravel';
+  if (/fastapi|flask|django|python/.test(backend)) return 'sqlalchemy';
+  return 'prisma';
+}
+function codeDatabase(input) {
+  const db = input.stack.database.toLowerCase();
+  return db.includes('mysql') || db.includes('maria') ? 'mysql' : db.includes('sqlite') ? 'sqlite' : 'postgresql';
+}
+
 const SKILLS = [['pemula', 'Pemula'], ['menengah', 'Menengah'], ['pro', 'Pro']];
 const BUDGETS = [['zero cost', 'Zero cost'], ['free tier', 'Free tier'], ['paid', 'Berbayar']];
 
@@ -368,8 +383,7 @@ export default function PrdMode() {
     try {
       const { data } = await axios.post('/api/prd/markdown', { input: payload, idea, plan, tasks, assumptions });
       if (how === 'download') {
-        downloadFile(data.markdown, data.file_name, 'text/markdown');
-        setExportNote(`${data.file_name} diunduh.`);
+        setExportNote(`${downloadFile(data.markdown, data.file_name, 'text/markdown')} diunduh.`);
       } else {
         await navigator.clipboard.writeText(data.markdown);
         setExportNote('Markdown tersalin.');
@@ -392,6 +406,31 @@ export default function PrdMode() {
       setDiagram({ status: 'error', result: null, error: apiErrorMessage(err) });
     }
   };
+
+  // The whole diagram set: ERD, class, data dictionary, use case, and a sequence and activity per MVP feature.
+  // Kept for this PRD in memory, so opening it again costs no AI call.
+  const bundleCache = useRef({ source: '', result: null });
+  const bundleSource = JSON.stringify([payload, idea, plan]);
+  const mvpCount = (idea?.features || []).filter((f) => f.phase === 1).length || Math.min(3, (idea?.features || []).length);
+
+  const buildBundle = async () => {
+    if (bundleCache.current.source === bundleSource && bundleCache.current.result) {
+      setDiagram({ status: 'done', error: '', result: bundleCache.current.result });
+      return;
+    }
+    setDiagram({ status: 'loading', result: null, error: '' });
+    try {
+      const { data } = await axios.post('/api/prd/diagrams', { input: payload, idea, plan });
+      const result = { ...data, openUrl: data.open_url, fileName: data.file_name };
+      bundleCache.current = { source: bundleSource, result };
+      setDiagram({ status: 'done', error: '', result });
+    } catch (err) {
+      setDiagram({ status: 'error', result: null, error: apiErrorMessage(err) });
+    }
+  };
+
+  const ddlFile = useMemo(() => (plan?.ddl ? new File([plan.ddl], `${slugName}.sql`, { type: 'text/plain' }) : null),
+    [plan?.ddl, slugName]);
 
   const buildUseCase = async () => {
     setDiagram({ status: 'loading', result: null, error: '' });
@@ -631,9 +670,16 @@ export default function PrdMode() {
                 {plan.entities.map((e) => <li key={e.name}><code className="font-mono">{e.name}</code> <span className="text-muted">{e.purpose}</span></li>)}
               </ul>
               <div className="flex flex-wrap gap-2 pt-1">
+                <button type="button" onClick={buildBundle} disabled={diagram.status === 'loading'} className={PRIMARY}>
+                  {diagram.status === 'loading' ? 'Membuat diagram…' : 'Buat paket diagram lengkap'}
+                </button>
                 <button type="button" onClick={buildErd} disabled={!plan.ddl.trim() || diagram.status === 'loading'} className={SECONDARY}>Buat ERD dari PRD</button>
                 <button type="button" onClick={buildUseCase} disabled={!plan.usecase_text.trim() || diagram.status === 'loading'} className={SECONDARY}>Buat Use Case dari PRD</button>
               </div>
+              <p className="m-0 text-muted">
+                Paket lengkap berisi ERD, Class Diagram, Kamus Data, Use Case, serta Sequence dan Activity untuk {mvpCount} fitur
+                Fase 1, dalam satu file .drawio. Sequence dan Activity ditulis AI, biasanya 15 sampai 60 detik.
+              </p>
               <details>
                 <summary className="flex min-h-[44px] cursor-pointer items-center text-muted hover:text-ink">Lihat atau ubah skema SQL</summary>
                 <label htmlFor="prd-ddl" className="sr-only">Skema SQL</label>
@@ -648,6 +694,10 @@ export default function PrdMode() {
             {diagram.status !== 'idle' && (
               <OutputPanel idPrefix="prd-output" status={diagram.status} result={diagram.result} error={diagram.error} emptyText="" />
             )}
+            <DocSection title="Kode awal dari skema">
+              <p className="m-0 text-muted">Migration dan model dari skema SQL di atas, tanpa AI. Pilihan awal mengikuti template {template.name}.</p>
+              <CodeExport file={ddlFile} idPrefix="prd-code" defaultTarget={codeTarget(input)} defaultDatabase={codeDatabase(input)} />
+            </DocSection>
             <DocSection title={`API (${plan.api.length} endpoint)`}>
               <ul className="m-0 list-none space-y-1 p-0">
                 {plan.api.map((a, i) => <li key={i}><code className="font-mono">{a.method} {a.path}</code> <span className="text-muted">{a.summary}</span></li>)}

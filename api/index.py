@@ -5,6 +5,7 @@ FastAPI application
   • POST /api/dictionary — .sql file upload → the data dictionary as Markdown and CSV
   • POST /api/uml      — UML text (sequence, …) → JSON with the .drawio XML, pages and line errors
   • POST /api/chat     — a plain-language request → UML text from an AI model, built into a diagram
+  • POST /api/prd/...  — idea → plan → tasks: a PRD in three AI stages, plus its Markdown (see prd.py)
 """
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile  # type: ignore
@@ -14,6 +15,7 @@ from pydantic import BaseModel  # type: ignore
 
 import sys
 import os
+from datetime import date
 sys.path.insert(0, os.path.dirname(__file__))
 
 from sql_parser import parse_sql  # type: ignore
@@ -22,6 +24,7 @@ from chat import ChatError, chat_generate  # type: ignore
 from data_dictionary import to_csv as dictionary_csv, to_markdown as dictionary_markdown  # type: ignore
 from uml import DIAGRAM_BUILDERS, generate_uml  # type: ignore
 from fixer import fix_text  # type: ignore
+from prd import prd_idea, prd_plan, prd_questions, prd_tasks, render_prd_markdown, slug  # type: ignore
 
 app = FastAPI(title='SQL to ERD Generator')
 
@@ -153,10 +156,65 @@ class ChatRequest(BaseModel):
 @app.post('/api/chat')
 async def chat(request: Request, body: ChatRequest):
     """Turn a plain-language request into UML text with the configured AI model, then build it."""
-    # Behind Vercel the visitor's address is the first entry of x-forwarded-for
-    forwarded = request.headers.get('x-forwarded-for', '')
-    visitor = forwarded.split(',')[0].strip() or (request.client.host if request.client else 'unknown')
     try:
-        return chat_generate(body.type, [m.model_dump() for m in body.messages], body.editor_text, visitor)
+        return chat_generate(body.type, [m.model_dump() for m in body.messages], body.editor_text, visitor_of(request))
     except ChatError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+def visitor_of(request: Request) -> str:
+    """Who is asking, for the rate limit. Behind Vercel it is the first entry of x-forwarded-for."""
+    forwarded = request.headers.get('x-forwarded-for', '')
+    return forwarded.split(',')[0].strip() or (request.client.host if request.client else 'unknown')
+
+
+class PrdRequest(BaseModel):
+    input: dict = {}
+    idea: dict | None = None
+    plan: dict | None = None
+    tasks: list | None = None
+    assumptions: list = []
+
+
+@app.post('/api/prd/questions')
+async def prd_questions_stage(request: Request, body: PrdRequest):
+    """Before stage 1: five clarifying questions about the idea, with answer chips."""
+    try:
+        return prd_questions(body.input, visitor_of(request))
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+@app.post('/api/prd/idea')
+async def prd_idea_stage(request: Request, body: PrdRequest):
+    """Stage 1: the idea as problem statement, solution, MVP scope and non-goals."""
+    try:
+        return prd_idea(body.input, visitor_of(request))
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+@app.post('/api/prd/plan')
+async def prd_plan_stage(request: Request, body: PrdRequest):
+    """Stage 2: user journey, use case text, architecture, SQL DDL, API spec, AI tools."""
+    try:
+        return prd_plan(body.input, body.idea or {}, visitor_of(request))
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+@app.post('/api/prd/tasks')
+async def prd_tasks_stage(request: Request, body: PrdRequest):
+    """Stage 3: atomic tasks in dependency order."""
+    try:
+        return prd_tasks(body.input, body.idea or {}, body.plan or {}, visitor_of(request))
+    except ChatError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
+@app.post('/api/prd/markdown')
+async def prd_markdown(body: PrdRequest):
+    """The PRD as one Markdown file; no AI involved."""
+    state = body.model_dump()
+    name = (body.idea or {}).get('product_name', '')
+    return {'markdown': render_prd_markdown(state, date.today().isoformat()), 'file_name': f'PRD-{slug(name)}.md'}

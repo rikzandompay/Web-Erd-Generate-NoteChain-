@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import GuideMode from './components/GuideMode';
+import PrdMode from './components/PrdMode';
 import SqlMode from './components/SqlMode';
 import Tabs from './components/Tabs';
 import ThemeToggle from './components/ThemeToggle';
@@ -9,6 +10,7 @@ import UserGuideWalkthrough from './components/UserGuideWalkthrough';
 const MODES = [
   { id: 'sql', label: 'File SQL' },
   { id: 'uml', label: 'Teks UML' },
+  { id: 'prd', label: 'PRD' },
   { id: 'guide', label: 'Panduan' },
 ];
 
@@ -51,6 +53,9 @@ function App() {
           </div>
           <div hidden={mode !== 'uml'}>
             <UmlTextMode />
+          </div>
+          <div hidden={mode !== 'prd'}>
+            <PrdMode />
           </div>
           <div hidden={mode !== 'guide'}>
             <GuideMode onOpenMode={setMode} />

@@ -76,28 +76,31 @@ def check_rate_limit(visitor: str, now: float | None = None) -> None:
 
 # ── Model call ───────────────────────────────────────────────────────────────
 
-def call_model(messages: list[dict[str, str]]) -> str:
-    """One chat completion from the configured OpenAI-compatible endpoint."""
-    model = os.environ.get('AI_MODEL', '').strip()
+def call_model(messages: list[dict[str, str]], prefix: str = 'AI') -> str:
+    """
+    One chat completion from an OpenAI-compatible endpoint, configured by the
+    variables <prefix>_BASE_URL, <prefix>_API_KEY and <prefix>_MODEL (AI_* by default).
+    """
+    model = os.environ.get(f'{prefix}_MODEL', '').strip()
     if not model:
-        raise ChatError('Chatbot belum diatur: variabel AI_MODEL belum diisi di server.', 503)
-    base = os.environ.get('AI_BASE_URL', 'http://localhost:20128/v1').rstrip('/')
+        raise ChatError(f'Chatbot belum diatur: variabel {prefix}_MODEL belum diisi di server.', 503)
+    base = os.environ.get(f'{prefix}_BASE_URL', 'http://localhost:20128/v1').rstrip('/')
     headers = {'Content-Type': 'application/json'}
-    if os.environ.get('AI_API_KEY'):
-        headers['Authorization'] = f"Bearer {os.environ['AI_API_KEY']}"
+    if os.environ.get(f'{prefix}_API_KEY'):
+        headers['Authorization'] = f"Bearer {os.environ[f'{prefix}_API_KEY']}"
     try:
         response = httpx.post(f'{base}/chat/completions', headers=headers, timeout=TIMEOUT,
                               json={'model': model, 'messages': messages, 'temperature': 0.2, 'stream': False})
     except httpx.TimeoutException:
-        raise ChatError(f'Model AI terlalu lama menjawab (lebih dari {int(TIMEOUT)} detik). Coba lagi, atau ganti AI_MODEL ke model yang lebih cepat.', 504)
+        raise ChatError(f'Model AI terlalu lama menjawab (lebih dari {int(TIMEOUT)} detik). Coba lagi, atau ganti {prefix}_MODEL ke model yang lebih cepat.', 504)
     except httpx.HTTPError:
-        raise ChatError('Server AI tidak bisa dihubungi. Periksa AI_BASE_URL dan pastikan penyedia AI-nya berjalan.', 502)
+        raise ChatError(f'Server AI tidak bisa dihubungi. Periksa {prefix}_BASE_URL dan pastikan penyedia AI-nya berjalan.', 502)
     if response.status_code in (429, 503):
         wait = re.search(r'reset after ([0-9hms ]+)', response.text)
         hint = f' Kata server AI: bisa dicoba lagi dalam {wait.group(1).strip()}.' if wait else ''
-        raise ChatError(f'Model AI sedang sibuk atau dibatasi oleh penyedianya.{hint} Coba lagi sebentar, atau ganti AI_MODEL.', 503)
+        raise ChatError(f'Model AI sedang sibuk atau dibatasi oleh penyedianya.{hint} Coba lagi sebentar, atau ganti {prefix}_MODEL.', 503)
     if response.status_code != 200:
-        raise ChatError(f'Server AI menolak permintaan (kode {response.status_code}). Cek AI_MODEL dan AI_API_KEY.', 502)
+        raise ChatError(f'Server AI menolak permintaan (kode {response.status_code}). Cek {prefix}_MODEL dan {prefix}_API_KEY.', 502)
     text = reply_text(response)
     if not text.strip():
         raise ChatError('Balasan server AI kosong atau tidak bisa dibaca.', 502)

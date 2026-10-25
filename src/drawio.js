@@ -8,8 +8,8 @@ export function pageNames(xml) {
 }
 
 /** Save the file through the browser's download. */
-export function downloadFile(xml, fileName) {
-  const url = URL.createObjectURL(new Blob([xml], { type: 'application/xml' }));
+export function downloadFile(xml, fileName, type = 'application/xml') {
+  const url = URL.createObjectURL(new Blob([xml], { type }));
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName.replace(/[\\/:*?"<>|]/g, '-');

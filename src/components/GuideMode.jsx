@@ -6,6 +6,7 @@ const SECTIONS = [
   { id: 'mulai', label: 'Mulai cepat' },
   { id: 'sql', label: 'Dari file SQL' },
   { id: 'uml', label: 'Dari teks UML' },
+  { id: 'prd', label: 'Membuat PRD' },
   { id: 'draw', label: 'Membuka hasilnya' },
   { id: 'error', label: 'Jika muncul pesan error' },
 ];
@@ -151,6 +152,22 @@ export default function GuideMode({ onOpenMode }) {
               <CodeSample code={EXAMPLES[type]} />
             </div>
           ))}
+        </Section>
+
+        <Section id="prd" title="Membuat PRD">
+          <p className="m-0">Tab <strong>PRD</strong> memandu dari ide mentah sampai daftar task, satu layar per langkah. Penanda <strong>Ide, PRD, Task</strong> di atas menunjukkan posisimu.</p>
+          <ol className="m-0 list-decimal space-y-2 pl-5">
+            <li><strong>Mau bikin apa?</strong> Ceritakan idemu dalam beberapa kalimat dan pilih bahasa dokumen. Tombol <strong>Referensi</strong> untuk menambah aturan bisnis atau mengunggah skema database lama (.sql).</li>
+            <li><strong>Beberapa pertanyaan.</strong> AI mengajukan 5 pertanyaan tentang idemu. Pilih jawaban yang ada, tambah sendiri lewat <strong>+ Lainnya</strong>, atau <strong>Lewati</strong>.</li>
+            <li><strong>Teknologi.</strong> Pilih template (Next.js, React + FastAPI, Laravel, Flutter + Supabase, atau atur sendiri), tingkat keahlian, dan budget server, lalu tekan <strong>Bikin Struktur</strong>.</li>
+            <li><strong>Struktur fitur.</strong> Peta fitur per fase (Fase 1 adalah MVP) beserta sub-fiturnya.</li>
+            <li><strong>PRD.</strong> User journey, arsitektur, skema database, dan API. Skema dan use case diperiksa dengan parser aplikasi ini, dan bisa langsung dijadikan diagram lewat <strong>Buat ERD dari PRD</strong> dan <strong>Buat Use Case dari PRD</strong>.</li>
+            <li><strong>Task.</strong> Task kecil berurutan sesuai dependensi, lalu <strong>Unduh PRD.md</strong> atau <strong>Salin Markdown</strong>.</li>
+          </ol>
+          <ul className="m-0 list-disc space-y-1 pl-5">
+            <li><strong>Kembali</strong> dan maju lagi tidak memanggil AI ulang. AI baru dipanggil lagi kalau jawabanmu di langkah sebelumnya berubah.</li>
+            <li>Draf tersimpan di browser ini; <strong>Mulai PRD baru</strong> menghapusnya. Bagian "Asumsi AI" berisi hal yang ditebak AI, jadi periksa sebelum dipakai.</li>
+          </ul>
         </Section>
 
         <Section id="draw" title="Membuka hasilnya">

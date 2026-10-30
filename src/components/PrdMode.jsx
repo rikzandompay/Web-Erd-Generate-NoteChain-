@@ -77,11 +77,30 @@ const PRIMARY = 'inline-flex items-center justify-center gap-2 min-h-[44px] px-6
 const SECONDARY = 'inline-flex items-center gap-2 min-h-[44px] px-4 rounded-md border border-edge text-sm font-medium hover:bg-desk disabled:cursor-not-allowed disabled:opacity-60';
 const QUIET = 'inline-flex items-center min-h-[44px] px-3 rounded-md text-sm text-muted hover:text-ink hover:bg-desk';
 
+// A finished PRD as one version's content, from the wizard's state
+function finishedState(d) {
+  const answers = (d.questions || []).map((q, i) => ({ question: q.question, answer: replyText(q, d.replies[i]) }))
+    .filter((a) => a.answer);
+  const checks = d.checks || {};
+  return {
+    input: { ...d.input, answers }, idea: d.idea, plan: d.plan, tasks: d.tasks,
+    assumptions: [...d.assumptions.idea, ...d.assumptions.plan, ...d.assumptions.tasks],
+    issues: [...(checks.ddl_errors || []), ...(checks.usecase_errors || []), ...(checks.consistency || []), ...(d.problems || [])],
+  };
+}
+
+// A PRD finished before versions existed becomes version 1. `local` marks a version this browser
+// has that the account does not yet; the next save sends it.
+function withFirstVersion(d) {
+  if (!d.tasks || d.versions?.length) return d;
+  return { ...d, versions: [{ n: 1, at: new Date().toISOString(), state: finishedState(d), local: true }] };
+}
+
 function loadDraft() {
   try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
     if (saved?.input && SCREENS.includes(saved.screen)) {
-      return { ...EMPTY, ...saved, input: { ...EMPTY.input, ...saved.input }, made: { ...EMPTY.made, ...saved.made } };
+      return withFirstVersion({ ...EMPTY, ...saved, input: { ...EMPTY.input, ...saved.input }, made: { ...EMPTY.made, ...saved.made } });
     }
   } catch {
     // Storage blocked or a broken draft: start fresh
@@ -91,12 +110,12 @@ function loadDraft() {
 
 function fromSaved(plan, owner) {
   const saved = plan.draft || {};
-  return {
+  return withFirstVersion({
     ...EMPTY, ...saved,
     input: { ...EMPTY.input, ...saved.input }, made: { ...EMPTY.made, ...saved.made },
     screen: SCREENS.includes(plan.screen) ? plan.screen : 'start',
     versions: plan.versions, planId: plan.id, owner,
-  };
+  });
 }
 
 // What the account stores as the wizard; versions are stored one by one
@@ -423,7 +442,8 @@ export default function PrdMode({ account }) {
       const current = gen === generation.current;
       const id = target || (current ? planId.current : '');
       const body = JSON.stringify(planBody(d));
-      if (current && id && body === lastSaved.current) return;
+      const unsent = d.versions.filter((v) => v.local);
+      if (current && id && body === lastSaved.current && !unsent.length) return;
       if (current) setSaveState('saving');
       try {
         if (id) {
@@ -433,6 +453,13 @@ export default function PrdMode({ account }) {
             if (err.response?.status !== 404) throw err;
             if (current) planId.current = '';       // removed on another device: saved as a new plan
             await ensurePlan({ ...d, versions: [] }, gen);
+          }
+          // Versions this browser kept while saving failed, or from before versions existed
+          const target = (current && planId.current) || id;
+          const sent = [];
+          for (const v of unsent) sent.push((await axios.post(`/api/plans/${target}/versions`, { state: v.state })).data);
+          if (sent.length && gen === generation.current) {
+            update((now) => ({ versions: [...now.versions.filter((v) => !unsent.includes(v)), ...sent] }));
           }
         } else {
           await ensurePlan(d, gen);
@@ -482,7 +509,7 @@ export default function PrdMode({ account }) {
   // A finished PRD as a new version: in the account when signed in, otherwise in this browser
   const addVersion = async (state, d) => {
     const keepHere = () => update((now) => ({
-      versions: [...now.versions, { n: (now.versions[now.versions.length - 1]?.n || 0) + 1, at: new Date().toISOString(), state }]
+      versions: [...now.versions, { n: (now.versions[now.versions.length - 1]?.n || 0) + 1, at: new Date().toISOString(), state, local: true }]
         .slice(-LOCAL_VERSIONS),
     }));
     if (!user) {
@@ -711,13 +738,7 @@ export default function PrdMode({ account }) {
   const template = TEMPLATES.find((t) => t.id === input.template) || TEMPLATES[0];
   const checkList = draft.checks
     ? [...draft.checks.ddl_errors, ...draft.checks.usecase_errors, ...(draft.checks.consistency || [])] : [];
-  // Drafts saved before versions existed still open as version 1
-  const versions = draft.versions?.length ? draft.versions : tasks ? [{
-    n: 1, at: new Date().toISOString(),
-    state: { input: payload, idea, plan, tasks,
-             assumptions: [...draft.assumptions.idea, ...draft.assumptions.plan, ...draft.assumptions.tasks],
-             issues: [...checkList, ...(draft.problems || [])] },
-  }] : [];
+  const { versions } = draft;
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (

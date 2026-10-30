@@ -124,7 +124,7 @@ function stamp(iso) {
   }
 }
 
-export default function PrdDocument({ versions, onBack }) {
+export default function PrdDocument({ versions, onBack, onReuse, busy }) {
   const latest = versions[versions.length - 1];
   // A choice only holds while no newer version exists; a new version is shown straight away
   const [choice, setChoice] = useState(null);
@@ -195,13 +195,25 @@ export default function PrdDocument({ versions, onBack }) {
           Kembali ke PRD
         </button>
         <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="prd-version" className="sr-only">Versi dokumen</label>
-          <select id="prd-version" value={version.n} onChange={(e) => setChoice({ n: Number(e.target.value), latest: latest.n })}
-            className="min-h-[44px] rounded-md border border-edge bg-panel px-3 text-sm text-ink">
-            {[...versions].reverse().map((v) => (
-              <option key={v.n} value={v.n}>Versi {v.n}{v.n === latest.n ? ' (terbaru)' : ''}, {stamp(v.at)}</option>
-            ))}
-          </select>
+          {versions.length > 1 ? (
+            <>
+              <label htmlFor="prd-version" className="sr-only">Versi dokumen</label>
+              <select id="prd-version" value={version.n} onChange={(e) => setChoice({ n: Number(e.target.value), latest: latest.n })}
+                className="min-h-[44px] rounded-md border border-edge bg-panel px-3 text-sm text-ink">
+                {[...versions].reverse().map((v) => (
+                  <option key={v.n} value={v.n}>Versi {v.n}{v.n === latest.n ? ' (terbaru)' : ''}, {stamp(v.at)}</option>
+                ))}
+              </select>
+              {version.n !== latest.n && onReuse && (
+                <button type="button" disabled={busy} onClick={() => onReuse(version)} className={SECONDARY}
+                  title="Salin versi ini menjadi versi terbaru; versi lain tetap ada">
+                  {busy ? 'Menyimpan…' : 'Pakai versi ini'}
+                </button>
+              )}
+            </>
+          ) : (
+            <span className="px-1 text-sm text-muted">Versi {version.n}, {stamp(version.at)}</span>
+          )}
           <button type="button" onClick={() => save('copy')} disabled={!doc} className={SECONDARY}>Salin Markdown</button>
           <button type="button" onClick={() => save('download')} disabled={!doc} className={PRIMARY}>
             <Download size={16} aria-hidden="true" /> Unduh PRD.md

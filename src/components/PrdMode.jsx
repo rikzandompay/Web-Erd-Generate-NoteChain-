@@ -6,12 +6,13 @@ import CodeExport from './CodeExport';
 import OutputPanel from './OutputPanel';
 import PrdDocument from './PrdDocument';
 import { apiErrorMessage, drawioUrl, pageNames } from '../drawio';
+import { DRAFT_KEY, loginHref } from '../account';
 
 // A guided wizard, one question per screen: Ide (idea → questions → technology → feature map)
 // → PRD → Task. Each AI step runs on the backend (api/prd.py). A step is only asked again when
 // what it was made from has changed, so going back and forward costs nothing.
-
-const DRAFT_KEY = 'erdgen-prd-wizard-v1';
+// Signed in, the wizard is also saved to the account (api/db.py) a moment after each change,
+// and every finished PRD becomes a version there; a draft made before signing in moves along.
 
 const TEMPLATES = [
   { id: 'next', name: 'Starter Next.js', note: 'Aplikasi fullstack dalam satu proyek',
@@ -66,7 +67,10 @@ const EMPTY = {
   assumptions: { idea: [], plan: [], tasks: [] },
   made: { questions: '', idea: '', plan: '', tasks: '' },   // what each result was made from
   versions: [],                           // finished PRDs, newest last: { n, at, state }
+  planId: '', owner: '',                  // the saved plan and its account, once signed in
 };
+const LOCAL_VERSIONS = 10;                // kept in this browser; the account keeps up to 50
+const SAVE_DELAY = 1200;
 
 const FIELD = 'w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm leading-6 text-ink';
 const PRIMARY = 'inline-flex items-center justify-center gap-2 min-h-[44px] px-6 rounded-md bg-accent text-on-accent font-semibold hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60';
@@ -83,6 +87,33 @@ function loadDraft() {
     // Storage blocked or a broken draft: start fresh
   }
   return EMPTY;
+}
+
+function fromSaved(plan, owner) {
+  const saved = plan.draft || {};
+  return {
+    ...EMPTY, ...saved,
+    input: { ...EMPTY.input, ...saved.input }, made: { ...EMPTY.made, ...saved.made },
+    screen: SCREENS.includes(plan.screen) ? plan.screen : 'start',
+    versions: plan.versions, planId: plan.id, owner,
+  };
+}
+
+// What the account stores as the wizard; versions are stored one by one
+function planBody(d) {
+  const rest = { ...d };
+  delete rest.versions;
+  delete rest.planId;
+  delete rest.owner;
+  return { title: d.idea?.product_name || d.input.idea_text.trim().slice(0, 80), screen: d.screen, draft: rest };
+}
+
+function stamp(iso) {
+  try {
+    return new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
 }
 
 const emptyReply = () => ({ skipped: false, picked: [], other: '', otherOn: false, text: '' });
@@ -255,9 +286,92 @@ function DocSection({ title, children }) {
   );
 }
 
+// ── Saved PRDs of the signed-in account ─────────────────────────────────────
+
+function PlanHistory({ currentId, onOpen, onDeleted }) {
+  const [plans, setPlans] = useState(null);
+  const [error, setError] = useState('');
+  const [confirming, setConfirming] = useState('');
+  const [busy, setBusy] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    axios.get('/api/plans')
+      .then(({ data }) => { if (live) setPlans(data.plans); })
+      .catch((err) => { if (live) setError(apiErrorMessage(err)); });
+    return () => { live = false; };
+  }, []);
+
+  const remove = async (id) => {
+    setBusy(id);
+    setError('');
+    try {
+      await axios.delete(`/api/plans/${id}`);
+      setPlans((list) => list.filter((p) => p.id !== id));
+      setConfirming('');
+      onDeleted(id);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const open = async (id) => {
+    setBusy(id);
+    setError('');
+    const problem = await onOpen(id);
+    if (problem) setError(problem);
+    setBusy('');
+  };
+
+  const shown = (plans || []).filter((p) => p.title || p.versions);
+  return (
+    <section aria-labelledby="prd-history-title" className="mt-10">
+      <h3 id="prd-history-title" className="m-0 text-base font-semibold">Riwayat PRD</h3>
+      {error && <p role="alert" className="m-0 mt-2 rounded-md bg-danger-bg px-3 py-2 text-sm text-danger">{error}</p>}
+      {!plans && !error && <p className="m-0 mt-2 text-sm text-muted">Memuat riwayat…</p>}
+      {plans && !shown.length && <p className="m-0 mt-2 text-sm text-muted">Belum ada PRD tersimpan. PRD yang kamu buat akan muncul di sini.</p>}
+      {shown.length > 0 && (
+        <ul className="m-0 mt-3 list-none divide-y divide-line rounded-[10px] border border-line bg-panel p-0">
+          {shown.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+              <div className="min-w-0">
+                <p className="m-0 truncate font-medium">{p.title || 'Tanpa judul'}{p.id === currentId && <span className="font-normal text-muted"> (sedang dibuka)</span>}</p>
+                <p className="m-0 text-xs text-muted">
+                  {p.versions ? `${p.versions} versi` : 'Belum selesai'}, diubah {stamp(p.updated_at)}
+                </p>
+              </div>
+              {confirming === p.id ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm">Hapus PRD ini dan semua versinya?</span>
+                  <button type="button" disabled={busy === p.id} onClick={() => remove(p.id)}
+                    className="inline-flex min-h-[44px] items-center px-3 rounded-md border border-danger bg-danger-bg text-sm font-semibold text-danger">
+                    {busy === p.id ? 'Menghapus…' : 'Hapus'}
+                  </button>
+                  <button type="button" onClick={() => setConfirming('')} className={QUIET}>Batal</button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <button type="button" disabled={!!busy} onClick={() => open(p.id)} className={SECONDARY}>
+                    {busy === p.id ? 'Membuka…' : 'Buka'}
+                  </button>
+                  <button type="button" onClick={() => setConfirming(p.id)} className={QUIET}
+                    aria-label={`Hapus ${p.title || 'PRD tanpa judul'}`}>Hapus</button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 // ── The wizard ───────────────────────────────────────────────────────────────
 
-export default function PrdMode() {
+export default function PrdMode({ account }) {
+  const user = account?.user || null;
   const [draft, setDraft] = useState(loadDraft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -269,11 +383,145 @@ export default function PrdMode() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...draft, versions: draft.versions.slice(-LOCAL_VERSIONS) }));
     } catch {
       // Storage full or blocked: the draft only lives until the page closes
     }
   }, [draft]);
+
+  // ── Saving to the account ──────────────────────────────────────────────
+  // One request at a time, in order, so a version never arrives before its plan exists
+  const [saveState, setSaveState] = useState('');        // '', 'saving', 'saved', 'error'
+  const queue = useRef(Promise.resolve());
+  const planId = useRef(draft.planId);
+  const generation = useRef(0);          // goes up when another PRD is started or opened
+  const lastSaved = useRef('');
+  const pending = useRef(null);          // the latest change, until it is sent
+  const enqueue = (job) => {
+    queue.current = queue.current.then(job, job);
+    return queue.current;
+  };
+
+  // The plan a draft is saved in; made on first save, with versions made before signing in.
+  // A save that finishes after another PRD was opened does not attach itself to that one.
+  const ensurePlan = async (d, gen) => {
+    if (gen === generation.current && planId.current) return planId.current;
+    const { data } = await axios.post('/api/plans', planBody(d));
+    const moved = [];
+    for (const v of d.versions) moved.push((await axios.post(`/api/plans/${data.id}/versions`, { state: v.state })).data);
+    if (gen === generation.current) {
+      planId.current = data.id;
+      update((now) => ({ planId: data.id, owner: user.id, versions: d.versions.length ? moved : now.versions }));
+    }
+    return data.id;
+  };
+
+  const save = (d) => {
+    const gen = generation.current;
+    const target = planId.current;
+    return enqueue(async () => {
+      const current = gen === generation.current;
+      const id = target || (current ? planId.current : '');
+      const body = JSON.stringify(planBody(d));
+      if (current && id && body === lastSaved.current) return;
+      if (current) setSaveState('saving');
+      try {
+        if (id) {
+          try {
+            await axios.put(`/api/plans/${id}`, planBody(d));
+          } catch (err) {
+            if (err.response?.status !== 404) throw err;
+            if (current) planId.current = '';       // removed on another device: saved as a new plan
+            await ensurePlan({ ...d, versions: [] }, gen);
+          }
+        } else {
+          await ensurePlan(d, gen);
+        }
+        if (gen === generation.current) {
+          lastSaved.current = body;
+          setSaveState('saved');
+        }
+      } catch {
+        if (gen === generation.current) setSaveState('error');
+      }
+    });
+  };
+
+  // Saved a moment after the last change, not on every keystroke
+  const saveLater = useRef(save);
+  useEffect(() => { saveLater.current = save; });
+  useEffect(() => {
+    if (!user || (!draft.planId && draft.input.idea_text.trim().length < 10)) return undefined;
+    pending.current = draft;
+    const timer = setTimeout(() => {
+      pending.current = null;
+      saveLater.current(draft);
+    }, SAVE_DELAY);
+    return () => clearTimeout(timer);
+  }, [draft, user]);
+
+  // Before switching to another PRD, the change still waiting is sent first
+  const flush = () => {
+    if (pending.current) save(pending.current);
+    pending.current = null;
+  };
+
+  // Closing the tab inside the delay: one last request that outlives the page
+  useEffect(() => {
+    const leave = () => {
+      if (!pending.current || !planId.current) return;
+      fetch(`/api/plans/${planId.current}`, {
+        method: 'PUT', keepalive: true, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(planBody(pending.current)),
+      }).catch(() => {});                                  // over the browser's 64 KB keepalive limit
+    };
+    window.addEventListener('pagehide', leave);
+    return () => window.removeEventListener('pagehide', leave);
+  }, []);
+
+  // A finished PRD as a new version: in the account when signed in, otherwise in this browser
+  const addVersion = async (state, d) => {
+    const keepHere = () => update((now) => ({
+      versions: [...now.versions, { n: (now.versions[now.versions.length - 1]?.n || 0) + 1, at: new Date().toISOString(), state }]
+        .slice(-LOCAL_VERSIONS),
+    }));
+    if (!user) {
+      keepHere();
+      return;
+    }
+    const gen = generation.current;
+    await enqueue(async () => {
+      try {
+        const id = await ensurePlan(d, gen);
+        const { data } = await axios.post(`/api/plans/${id}/versions`, { state });
+        if (gen !== generation.current) return;
+        update((now) => ({ versions: [...now.versions, data] }));
+        setSaveState('saved');
+      } catch {
+        if (gen !== generation.current) return;
+        keepHere();
+        setSaveState('error');
+      }
+    });
+  };
+
+  const openPlan = async (id) => {
+    flush();
+    try {
+      await queue.current;                                // its own last change included
+      const { data } = await axios.get(`/api/plans/${id}`);
+      generation.current += 1;
+      planId.current = data.id;
+      lastSaved.current = JSON.stringify(planBody(fromSaved(data, user.id)));
+      setDraft(fromSaved(data, user.id));
+      setError('');
+      setDiagram({ status: 'idle', result: null, error: '' });
+      top.current?.scrollIntoView({ block: 'start' });
+      return '';
+    } catch (err) {
+      return apiErrorMessage(err);
+    }
+  };
 
   const update = (patch) => setDraft((d) => ({ ...d, ...(typeof patch === 'function' ? patch(d) : patch) }));
   const setInput = (key, value) => update((d) => ({ input: { ...d.input, [key]: value } }));
@@ -347,23 +595,18 @@ export default function PrdMode() {
     if (made.tasks !== source.tasks || !tasks) {
       const data = await call('tasks', { input: payload, idea, plan });
       if (!data) return;
-      update((d) => {
-        const assumptions = { ...d.assumptions, tasks: data.assumptions };
-        const checks = d.checks || {};
-        // Every finished PRD is kept as a version, so an earlier one can be read again
-        const version = {
-          n: (d.versions?.[d.versions.length - 1]?.n || 0) + 1,
-          at: new Date().toISOString(),
-          state: {
-            input: payload, idea, plan, tasks: data.tasks,
-            assumptions: [...assumptions.idea, ...assumptions.plan, ...assumptions.tasks],
-            issues: [...(checks.ddl_errors || []), ...(checks.usecase_errors || []), ...(checks.consistency || []), ...data.problems],
-          },
-        };
-        return { tasks: data.tasks, problems: data.problems, assumptions,
-                 made: { ...d.made, tasks: JSON.stringify([payload, idea, plan]) },
-                 versions: [...(d.versions || []), version].slice(-10) };
-      });
+      const assumptions = { ...draft.assumptions, tasks: data.assumptions };
+      const checks = draft.checks || {};
+      const next = { tasks: data.tasks, problems: data.problems, assumptions, made: { ...made, tasks: source.tasks } };
+      update(next);
+      // Every finished PRD is kept as a version, so an earlier one can be read again
+      setBusy(true);
+      await addVersion({
+        input: payload, idea, plan, tasks: data.tasks,
+        assumptions: [...assumptions.idea, ...assumptions.plan, ...assumptions.tasks],
+        issues: [...(checks.ddl_errors || []), ...(checks.usecase_errors || []), ...(checks.consistency || []), ...data.problems],
+      }, { ...draft, ...next });
+      setBusy(false);
     }
     go('tasks');
   };
@@ -444,9 +687,23 @@ export default function PrdMode() {
   const editPlan = (key, value) => update((d) => ({ plan: { ...d.plan, [key]: value }, checks: null }));
 
   const restart = () => {
+    flush();
+    generation.current += 1;
+    planId.current = '';
+    lastSaved.current = '';
     setDraft(EMPTY);
     setError('');
     setDiagram({ status: 'idle', result: null, error: '' });
+  };
+
+  // "Pakai versi ini": an older version comes back as the newest one, and the wizard continues from it
+  const reuseVersion = async (version) => {
+    const s = version.state;
+    update((d) => ({
+      idea: s.idea, plan: s.plan, tasks: s.tasks, checks: null, problems: [],
+      made: { ...d.made, plan: JSON.stringify([payload, s.idea]), tasks: JSON.stringify([payload, s.idea, s.plan]) },
+    }));
+    await addVersion(s, draft);
   };
 
   const furthest = tasks ? 'tasks' : plan ? 'prd' : idea ? 'structure' : questions ? 'questions' : null;
@@ -467,7 +724,17 @@ export default function PrdMode() {
     <div ref={top} className="scroll-mt-4">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <Stepper step={STEP_OF[screen]} />
-        {screen !== 'start' && <button type="button" onClick={restart} className={QUIET}>Mulai PRD baru</button>}
+        <div className="flex flex-wrap items-center gap-2">
+          {user && saveState && (
+            <span aria-live="polite" className={`text-sm ${saveState === 'error' ? 'text-danger' : 'text-muted'}`}>
+              {{ saving: 'Menyimpan…', saved: 'Tersimpan di akun', error: 'Gagal menyimpan, dicoba lagi saat ada perubahan' }[saveState]}
+            </span>
+          )}
+          {!user && account?.ready && (
+            <a href={loginHref()} className={QUIET}>Masuk untuk menyimpan riwayat</a>
+          )}
+          {screen !== 'start' && <button type="button" onClick={restart} className={QUIET}>Mulai PRD baru</button>}
+        </div>
       </div>
 
       {screen === 'start' && (
@@ -521,6 +788,14 @@ export default function PrdMode() {
           <Actions error={error}>
             {furthest && <button type="button" onClick={() => go(furthest)} className={QUIET}>Lanjutkan PRD terakhir</button>}
           </Actions>
+          {user && <PlanHistory currentId={draft.planId} onOpen={openPlan}
+            onDeleted={(id) => { if (id === planId.current) restart(); }} />}
+          {!user && account?.ready && (
+            <p className="mt-10 mb-0 text-sm text-muted">
+              <a href={loginHref()} className="font-medium text-ink underline">Masuk dengan Google</a> supaya setiap PRD dan versinya
+              tersimpan di akun dan bisa dibuka lagi dari perangkat lain. Draf yang sedang kamu isi ikut tersimpan.
+            </p>
+          )}
         </Screen>
       )}
 
@@ -720,7 +995,7 @@ export default function PrdMode() {
       )}
 
       {screen === 'tasks' && versions.length > 0 && (
-        <PrdDocument versions={versions} onBack={() => go('prd')} />
+        <PrdDocument versions={versions} onBack={() => go('prd')} onReuse={reuseVersion} busy={busy} />
       )}
     </div>
   );

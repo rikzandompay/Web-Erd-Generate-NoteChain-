@@ -7,6 +7,7 @@ const SECTIONS = [
   { id: 'sql', label: 'Dari file SQL' },
   { id: 'uml', label: 'Dari teks UML' },
   { id: 'prd', label: 'Membuat PRD' },
+  { id: 'riwayat', label: 'Riwayat dan privasi' },
   { id: 'draw', label: 'Membuka hasilnya' },
   { id: 'error', label: 'Jika muncul pesan error' },
 ];
@@ -176,6 +177,18 @@ export default function GuideMode({ onOpenMode }) {
             <li><strong>Semua bagian dijaga sinkron.</strong> Aktor use case harus sama dengan target pengguna, setiap fitur Fase 1 harus punya use case, setiap sub-fitur harus punya tabel dan endpoint yang benar-benar ada di skema dan API, dan setiap endpoint harus dikerjakan di task. Bagian <strong>Keterlacakan Fitur</strong> di dokumen menunjukkan pemetaan itu. Yang belum cocok diperbaiki AI sekali; sisanya ditampilkan, tidak disembunyikan.</li>
             <li><strong>Kembali</strong> dan maju lagi tidak memanggil AI ulang. AI baru dipanggil lagi kalau jawabanmu di langkah sebelumnya berubah.</li>
             <li>Draf tersimpan di browser ini; <strong>Mulai PRD baru</strong> menghapusnya. Bagian "Asumsi AI" berisi hal yang ditebak AI, jadi periksa sebelum dipakai.</li>
+          </ul>
+        </Section>
+
+        <Section id="riwayat" title="Riwayat dan privasi">
+          <p className="m-0">Tanpa masuk, PRD hanya ada di browser ini (10 versi terakhir). Dengan <strong>Masuk dengan Google</strong>, PRD juga disimpan di akunmu dan bisa dibuka dari perangkat lain.</p>
+          <ul className="m-0 list-disc space-y-1 pl-5">
+            <li>Setiap perubahan di wizard tersimpan otomatis sesaat setelah kamu berhenti mengetik, termasuk langkah terakhir yang sedang dibuka. Statusnya tampil di samping penanda langkah.</li>
+            <li>Draf yang kamu isi sebelum masuk ikut dipindahkan ke akun, lengkap dengan versinya.</li>
+            <li><strong>Riwayat PRD</strong> di layar pertama berisi semua PRD milikmu. <strong>Buka</strong> melanjutkan dari langkah terakhir; <strong>Hapus</strong> menghapus PRD itu beserta semua versinya.</li>
+            <li>Setiap kali Task dibuat, PRD tersimpan sebagai versi baru (maksimal 50 per PRD, yang tertua terhapus lebih dulu). Versi lama tidak pernah ditimpa. <strong>Pakai versi ini</strong> menyalin versi lama menjadi versi terbaru.</li>
+            <li>Yang disimpan: nama, email, dan foto profil Google, serta isi PRD, termasuk konteks dan skema .sql yang kamu tambahkan lewat Referensi. File di tab File SQL dan teks di tab Teks UML tidak disimpan. PRD hanya bisa dibuka oleh akun pemiliknya.</li>
+            <li><strong>Keluar</strong> juga menghapus draf di browser ini, jadi aman di komputer bersama. <strong>Hapus akun</strong> di menu akun menghapus akun dan semua PRD secara permanen.</li>
           </ul>
         </Section>
 

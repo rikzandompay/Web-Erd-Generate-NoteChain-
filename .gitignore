@@ -27,3 +27,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local database for PRD history, and research notes
+api/.local.db
+reports/
+research_notes/

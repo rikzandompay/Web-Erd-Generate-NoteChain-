@@ -16,9 +16,9 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from chat import ChatError, call_model, check_rate_limit, clean_reply  # type: ignore
+from chat import ChatError, check_rate_limit, clean_reply  # type: ignore
 from generator import generate_drawio_xml  # type: ignore
-from prd import _earlier, clean_input, model_prefix, normalize_idea, normalize_plan, slug  # type: ignore
+from prd import _earlier, ask_model, clean_input, model_prefix, normalize_idea, normalize_plan, slug  # type: ignore
 from sql_parser import parse_sql  # type: ignore
 from system_instruction import build_system_instruction  # type: ignore
 from uml import drawio_url, generate_uml  # type: ignore
@@ -58,18 +58,19 @@ def _request(kind: str, idea: dict[str, Any], plan: dict[str, Any], features: li
     return '\n'.join(lines)
 
 
-def _write(kind: str, idea: dict[str, Any], plan: dict[str, Any], features: list[dict[str, Any]], prefix: str) -> dict[str, Any]:
+def _write(kind: str, idea: dict[str, Any], plan: dict[str, Any], features: list[dict[str, Any]], prefix: str,
+           skill: str = '') -> dict[str, Any]:
     """One diagram type from the model, checked by the parser, with one repair round."""
     conversation = [{'role': 'system', 'content': build_system_instruction(kind)},
                     {'role': 'user', 'content': _request(kind, idea, plan, features)}]
-    text = clean_reply(call_model(conversation, prefix))
+    text = clean_reply(ask_model(conversation, prefix, skill))
     result = generate_uml(kind, text)
     if result['errors'] or not result['pages']:
         problems = '\n'.join(f"Baris {e['line']}: {e['message']}" for e in result['errors'][:8]) or 'Tidak ada halaman yang terbaca.'
         retry = [*conversation, {'role': 'assistant', 'content': text}, {
             'role': 'user',
             'content': f'Teks tadi punya kesalahan:\n{problems}\nKembalikan teks LENGKAP yang sudah diperbaiki, tetap tanpa penjelasan.'}]
-        fixed = clean_reply(call_model(retry, prefix))
+        fixed = clean_reply(ask_model(retry, prefix, skill))
         fixed_result = generate_uml(kind, fixed)
         if (fixed_result['pages'] and len(fixed_result['errors']) <= len(result['errors'])) or not result['pages']:
             text, result = fixed, fixed_result
@@ -98,7 +99,7 @@ def merge_drawio(parts: list[tuple[str, str]]) -> tuple[str, list[str]]:
 
 def build_diagram_bundle(raw_input: dict[str, Any], idea: dict[str, Any], plan: dict[str, Any],
                          visitor: str) -> dict[str, Any]:
-    clean_input(raw_input)
+    skill = clean_input(raw_input)['constraints']['skill']
     idea = _earlier(normalize_idea, 'idea', idea, '1 (Ide)')
     plan = _earlier(normalize_plan, 'plan', plan, '2 (Rencana)')
     features = mvp_features(idea)
@@ -126,7 +127,7 @@ def build_diagram_bundle(raw_input: dict[str, Any], idea: dict[str, Any], plan: 
 
     prefix = model_prefix()
     with ThreadPoolExecutor(max_workers=2) as pool:
-        jobs = {kind: pool.submit(_write, kind, idea, plan, features, prefix) for kind in ('sequence', 'activity')}
+        jobs = {kind: pool.submit(_write, kind, idea, plan, features, prefix, skill) for kind in ('sequence', 'activity')}
         written = {}
         for kind, job in jobs.items():
             try:

@@ -33,7 +33,7 @@ function parseMarkdown(md) {
       i += 1;
       continue;
     }
-    const heading = line.match(/^(#{1,3})\s+(.*)$/);
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
     if (heading) {
       blocks.push({ type: `h${heading[1].length}`, text: heading[2] });
       i += 1;
@@ -58,7 +58,7 @@ function parseMarkdown(md) {
       continue;
     }
     const text = [];
-    while (i < lines.length && lines[i].trim() && !/^(```|#{1,3}\s|\||-\s|\d+\.\s)/.test(lines[i])) text.push(lines[i++]);
+    while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s|\||-\s|\d+\.\s)/.test(lines[i])) text.push(lines[i++]);
     blocks.push({ type: 'p', text: text.join(' ') });
   }
   return blocks;
@@ -82,6 +82,8 @@ function Block({ block, id }) {
       return <h2 id={id} className="mt-10 mb-3 scroll-mt-6 text-xl font-semibold"><Inline text={block.text} /></h2>;
     case 'h3':
       return <h3 className="mt-6 mb-2 text-base font-semibold"><Inline text={block.text} /></h3>;
+    case 'h4':
+      return <h4 className="mt-5 mb-1 text-[15px] font-semibold"><Inline text={block.text} /></h4>;
     case 'p':
       return <p className="my-3 leading-7"><Inline text={block.text} /></p>;
     case 'ul':
@@ -102,7 +104,8 @@ function Block({ block, id }) {
             <tbody>
               {block.rows.map((row, r) => (
                 <tr key={r} className="border-b border-line last:border-b-0 align-top">
-                  {row.map((c, i) => <td key={i} className="px-3 py-2"><Inline text={c} /></td>)}
+                  {/* Short codes (FR-01, T02, PK) stay on one line */}
+                  {row.map((c, i) => <td key={i} className={`px-3 py-2 ${c.length <= 6 ? 'whitespace-nowrap' : ''}`}><Inline text={c} /></td>)}
                 </tr>
               ))}
             </tbody>

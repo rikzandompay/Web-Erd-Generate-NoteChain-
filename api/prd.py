@@ -26,6 +26,7 @@ import re
 from typing import Any
 
 from chat import ChatError, call_model, check_rate_limit, clean_reply  # type: ignore
+from data_dictionary import HEADERS as DICTIONARY_HEADERS, dictionary_rows  # type: ignore
 from prd_consistency import plan_consistency, tasks_consistency, traceability  # type: ignore
 from prd_instruction import MAX_TASKS, instruction  # type: ignore
 from sql_parser import parse_sql  # type: ignore
@@ -165,8 +166,21 @@ def normalize_features(raw: Any) -> list[dict[str, Any]]:
             phase = min(4, max(1, int(f.get('phase') or 1)))
         except (TypeError, ValueError):
             phase = 1
-        out.append({'name': name, 'phase': phase, 'sub_features': _strings(f.get('sub_features'), 8)})
+        out.append({'name': name, 'phase': phase, 'description': _text(f.get('description'), 800),
+                    'user_story': _text(f.get('user_story'), 400),
+                    'sub_features': _strings(f.get('sub_features'), 8), 'acceptance': _strings(f.get('acceptance'), 6)})
     return sorted(out, key=lambda f: f['phase'])
+
+
+def _records(value: Any, fields: dict[str, int], lists: dict[str, int] | None = None, limit: int = 15) -> list[dict[str, Any]]:
+    """A list of small objects, each text field trimmed to its length; entries with nothing in them dropped."""
+    out = []
+    for item in _dicts(value)[:limit]:
+        row: dict[str, Any] = {k: _text(item.get(k), n) for k, n in fields.items()}
+        row.update({k: _strings(item.get(k), n) for k, n in (lists or {}).items()})
+        if any(row.values()):
+            out.append(row)
+    return out
 
 
 def normalize_questions(answer: dict[str, Any]) -> list[dict[str, Any]]:
@@ -186,12 +200,21 @@ def normalize_idea(answer: dict[str, Any]) -> dict[str, Any]:
     idea = answer.get('idea') if isinstance(answer.get('idea'), dict) else {}
     out = {
         'product_name': _text(idea.get('product_name'), 80),
+        'overview': _text(idea.get('overview'), 2500),
         'problem_statement': _text(idea.get('problem_statement'), 1000),
         'solution': _text(idea.get('solution'), 1000),
         'target_users': _strings(idea.get('target_users'), 10),
+        'personas': _records(idea.get('personas'), {'role': 60, 'description': 400},
+                             {'goals': 5, 'pain_points': 5}, limit=8),
         'core_value': _text(idea.get('core_value'), 300),
         'mvp_scope': _strings(idea.get('mvp_scope'), 12),
         'non_goals': _strings(idea.get('non_goals'), 10),
+        'functional_requirements': _records(idea.get('functional_requirements'),
+                                            {'id': 10, 'feature': 80, 'requirement': 500, 'priority': 20}, limit=25),
+        'non_functional_requirements': _records(idea.get('non_functional_requirements'),
+                                                {'category': 40, 'title': 80, 'description': 500}, limit=10),
+        'success_metrics': _records(idea.get('success_metrics'), {'metric': 150, 'target': 150, 'how': 250}, limit=8),
+        'risks': _records(idea.get('risks'), {'risk': 250, 'impact': 250, 'mitigation': 400}, limit=8),
         'features': normalize_features(idea.get('features')),
     }
     if not out['mvp_scope']:                         # the first phase is the MVP
@@ -203,11 +226,43 @@ def normalize_idea(answer: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def idea_depth(idea: dict[str, Any]) -> list[str]:
+    """Where the idea is still a bare list instead of a written-out PRD."""
+    problems = []
+    if len(idea['overview'].split()) < 60:
+        problems.append('overview terlalu singkat; tulis 2 sampai 3 paragraf (100 sampai 200 kata).')
+    if len(idea['functional_requirements']) < 5:
+        problems.append('functional_requirements minimal 5 butir untuk fitur phase 1.')
+    if len(idea['non_functional_requirements']) < 3:
+        problems.append('non_functional_requirements minimal 3 butir.')
+    bare = [f['name'] for f in idea['features'] if f['phase'] == 1 and (not f['description'] or not f['acceptance'])]
+    if bare:
+        problems.append('Fitur phase 1 tanpa description atau acceptance: ' + ', '.join(bare) + '.')
+    phase_one = {f['name'] for f in idea['features'] if f['phase'] == 1}
+    stray = sorted({r['feature'] for r in idea['functional_requirements'] if r['feature'] and r['feature'] not in phase_one})
+    if stray:
+        problems.append('functional_requirements merujuk fitur yang bukan phase 1 atau namanya tidak persis: ' + ', '.join(stray) + '.')
+    return problems
+
+
+def plan_depth(plan: dict[str, Any], idea: dict[str, Any]) -> list[str]:
+    problems = []
+    if len(plan['architecture_overview'].split()) < 40:
+        problems.append('architecture_overview terlalu singkat; tulis 2 paragraf tentang alur data antar-lapisan.')
+    phase_one = [f for f in idea.get('features') or [] if f.get('phase') == 1]
+    if len(plan['user_flows']) < min(len(phase_one), 2):
+        problems.append('user_flows harus berisi satu alur rinci untuk setiap fitur phase 1.')
+    return problems
+
+
 def normalize_plan(answer: dict[str, Any]) -> dict[str, Any]:
     plan = answer.get('plan') if isinstance(answer.get('plan'), dict) else {}
     out = {
         'user_journey': _strings(plan.get('user_journey'), 20),
+        'user_flows': _records(plan.get('user_flows'), {'name': 120, 'actor': 60},
+                               {'steps': 12, 'edge_cases': 6}, limit=12),
         'usecase_text': str(plan.get('usecase_text') or '').strip(),
+        'architecture_overview': _text(plan.get('architecture_overview'), 2500),
         'architecture': [{'layer': _text(a.get('layer'), 40), 'choice': _text(a.get('choice'), 120),
                           'reason': _text(a.get('reason'), 300)} for a in _dicts(plan.get('architecture'))],
         'ddl': clean_reply(str(plan.get('ddl') or '')),
@@ -311,6 +366,15 @@ def model_prefix() -> str:
     return 'PRD_AI' if os.environ.get('PRD_AI_MODEL', '').strip() else 'AI'
 
 
+def ask_model(messages: list[dict[str, str]], prefix: str, skill: str = '') -> str:
+    """
+    One model call. With PRD_AI_MODEL set, the user's skill level can pick its own model through
+    PRD_AI_MODEL_PEMULA, PRD_AI_MODEL_MENENGAH and PRD_AI_MODEL_PRO; a level left empty uses PRD_AI_MODEL.
+    """
+    model = os.environ.get(f'{prefix}_MODEL_{skill.upper()}', '').strip() if prefix == 'PRD_AI' and skill else ''
+    return call_model(messages, prefix, model) if model else call_model(messages, prefix)
+
+
 def _ask(stage: str, skill: str, content: str, check) -> tuple[Any, list[str], dict[str, Any]]:
     """
     One stage: ask, parse, check. `check(answer)` returns (result, problems).
@@ -327,14 +391,14 @@ def _ask(stage: str, skill: str, content: str, check) -> tuple[Any, list[str], d
             return None, [f'Format balasan tidak sesuai: {exc}.'], {}
 
     prefix = model_prefix()
-    reply = call_model(conversation, prefix)
+    reply = ask_model(conversation, prefix, skill)
     result, problems, answer = attempt(reply)
     if problems:
         retry = [*conversation, {'role': 'assistant', 'content': reply}, {
             'role': 'user',
             'content': 'Balasan tadi punya masalah:\n- ' + '\n- '.join(problems[:10]) +
                        '\nKirim ulang objek JSON LENGKAP yang sudah diperbaiki, tetap tanpa penjelasan.'}]
-        fixed = attempt(call_model(retry, prefix))
+        fixed = attempt(ask_model(retry, prefix, skill))
         if fixed[0] is not None and (result is None or len(fixed[1]) <= len(problems)):
             result, problems, answer = fixed
     if result is None:
@@ -370,7 +434,7 @@ def prd_questions(raw_input: dict[str, Any], visitor: str) -> dict[str, Any]:
         return normalize_questions(answer), []
 
     try:
-        questions, _, _ = _ask('questions', 'menengah', _brief(data), check)
+        questions, _, _ = _ask('questions', '', _brief(data), check)      # asked before a skill level is chosen
         return {'questions': questions, 'fallback': False}
     except ChatError as exc:
         if exc.status != 502:                        # limit reached or model down: say so
@@ -383,7 +447,8 @@ def prd_idea(raw_input: dict[str, Any], visitor: str) -> dict[str, Any]:
     check_rate_limit(visitor)
 
     def check(answer):
-        return normalize_idea(answer), []
+        idea = normalize_idea(answer)
+        return idea, idea_depth(idea)
 
     idea, _, answer = _ask('idea', data['constraints']['skill'], _brief(data), check)
     return {'idea': idea, 'assumptions': _assumptions(answer)}
@@ -412,7 +477,7 @@ def prd_plan(raw_input: dict[str, Any], idea: dict[str, Any], visitor: str) -> d
         plan = normalize_plan(answer)
         checks = all_checks(plan)
         return plan, [*(f'DDL: {e}' for e in checks['ddl_errors']), *(f'Use case: {e}' for e in checks['usecase_errors']),
-                      *(f'Tidak sinkron dengan tahap Ide: {e}' for e in checks['consistency'])]
+                      *(f'Tidak sinkron dengan tahap Ide: {e}' for e in checks['consistency']), *plan_depth(plan, idea)]
 
     plan, _, answer = _ask('plan', data['constraints']['skill'], content, check)
     return {'plan': plan, 'assumptions': _assumptions(answer), 'checks': all_checks(plan)}
@@ -455,48 +520,133 @@ def _bullets(items: list[str]) -> str:
     return '\n'.join(f'- {i}' for i in items) if items else '_Belum diisi._'
 
 
+def _cleaned(normalize, key: str, value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or not value:
+        return {}
+    try:
+        return normalize({key: value})
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return value
+
+
+def _paragraphs(text: Any) -> list[str]:
+    """Prose split on blank lines, each paragraph followed by an empty line."""
+    out = []
+    for part in re.split(r'\n\s*\n', str(text or '').strip()):
+        if part.strip():
+            out += [' '.join(part.split()), '']
+    return out
+
+
+def _data_dictionary(ddl: str) -> list[str]:
+    """Every column of every table, read from the SQL itself (with its -- comments as descriptions)."""
+    try:
+        tables = dictionary_rows(parse_sql(ddl))
+    except ValueError:
+        return []
+    out = ['### Kamus Data', '']
+    for name, rows in tables:
+        out += [f'#### Tabel `{name}`', '', '| ' + ' | '.join(DICTIONARY_HEADERS) + ' |',
+                '|' + '|'.join('---' for _ in DICTIONARY_HEADERS) + '|',
+                *['| ' + ' | '.join(_cell(c) or '-' for c in row) + ' |' for row in rows], '']
+    return out
+
+
 def render_prd_markdown(state: dict[str, Any], date: str = '') -> str:
     """The whole PRD as Markdown; a stage that has not been made yet is marked, not left out."""
     state = state or {}
     raw = state.get('input') or {}
-    idea, plan, tasks = state.get('idea') or {}, state.get('plan') or {}, state.get('tasks') or []
+    # The state comes from the browser: cleaned the same way as a fresh AI answer, when it is complete enough
+    idea = _cleaned(normalize_idea, 'idea', state.get('idea'))
+    plan = _cleaned(normalize_plan, 'plan', state.get('plan'))
+    tasks = state.get('tasks') or []
     stack, cons = raw.get('stack') or {}, raw.get('constraints') or {}
     pending = '_Belum dibuat. Jalankan tahap ini di ERD Generator._'
     name = idea.get('product_name') or 'Produk Baru'
     sections: list[tuple[str, list[str]]] = []
 
     if idea:
-        body = [f"**Masalah.** {idea.get('problem_statement', '')}", '',
+        body = [*_paragraphs(idea.get('overview')),
+                f"**Masalah.** {idea.get('problem_statement', '')}", '',
                 f"**Solusi inti.** {idea.get('solution', '')}", '',
                 f"**Target pengguna.** {', '.join(idea.get('target_users') or [])}", '',
                 f"**Core value.** {idea.get('core_value', '')}"]
     else:
         body = [pending]
     sections.append(('Ringkasan', body))
+
+    # Parts that PRDs made before they existed simply do not have; those are left out, not marked pending
+    if idea.get('personas'):
+        body = []
+        for p in idea['personas']:
+            body += [f"### {p['role']}", '', p['description'], '']
+            if p['goals']:
+                body += ['**Tujuan:**', '', _bullets(p['goals']), '']
+            if p['pain_points']:
+                body += ['**Kendala saat ini:**', '', _bullets(p['pain_points']), '']
+        sections.append(('Pengguna dan Persona', body[:-1]))
+
+    if idea.get('success_metrics'):
+        sections.append(('Tujuan dan Metrik Keberhasilan', [
+            'Ukuran untuk menilai apakah produk sudah mencapai tujuannya setelah dipakai:', '',
+            '| Metrik | Target | Cara mengukur |', '|---|---|---|',
+            *[f"| {_cell(m['metric'])} | {_cell(m['target'])} | {_cell(m['how'])} |" for m in idea['success_metrics']]]))
+
     sections.append(('Scope MVP', [_bullets(idea.get('mvp_scope') or []) if idea else pending, '',
                                    '### Non-Goals', '', _bullets(idea.get('non_goals') or []) if idea else pending]))
+
+    if idea.get('functional_requirements') or idea.get('non_functional_requirements'):
+        body = []
+        if idea.get('functional_requirements'):
+            body += ['### Kebutuhan Fungsional', '', 'Hal yang harus bisa dilakukan sistem pada MVP. "Wajib" harus ada saat rilis.', '',
+                     '| ID | Fitur | Kebutuhan | Prioritas |', '|---|---|---|---|',
+                     *[f"| {_cell(r['id'])} | {_cell(r['feature'])} | {_cell(r['requirement'])} | {_cell(r['priority'])} |"
+                       for r in idea['functional_requirements']], '']
+        if idea.get('non_functional_requirements'):
+            body += ['### Kebutuhan Non-Fungsional', '', 'Kualitas yang harus dipenuhi seluruh aplikasi, bukan satu fitur saja.', '',
+                     *[f"- **{r['title']}** ({r['category']}): {r['description']}" if r['category']
+                       else f"- **{r['title']}**: {r['description']}" for r in idea['non_functional_requirements']], '']
+        sections.append(('Kebutuhan (Requirements)', body[:-1]))
 
     features = idea.get('features') or [] if idea else []
     body = []
     for phase in sorted({f['phase'] for f in features}):
         body += [f'### Fase {phase}' + (' (MVP)' if phase == 1 else ''), '']
         for f in (f for f in features if f['phase'] == phase):
-            subs = ', '.join(s for s in f.get('sub_features') or [] if str(s).strip())
-            body.append(f"- **{f['name']}**" + (f': {subs}' if subs else ''))
-        body.append('')
+            subs = [s for s in f.get('sub_features') or [] if str(s).strip()]
+            if not f.get('description'):              # a PRD from before features were written out
+                body.append(f"- **{f['name']}**" + (f": {', '.join(subs)}" if subs else ''))
+                continue
+            body += [f"#### {f['name']}", '', f['description'], '']
+            if f.get('user_story'):
+                body += [f"**User story.** {f['user_story']}", '']
+            if subs:
+                body += ['**Sub-fitur:**', '', _bullets(subs), '']
+            if f.get('acceptance'):
+                body += ['**Kriteria penerimaan:**', '', _bullets(f['acceptance']), '']
+        if body[-1] != '':
+            body.append('')
     sections.append(('Struktur Fitur', body[:-1] if body else [pending]))
 
     if plan:
         steps = [s for s in plan.get('user_journey') or [] if str(s).strip()]
-        body = [*(f'{n}. {step}' for n, step in enumerate(steps, start=1)), '',
-                'Use case diagram (tempel di tab Teks UML, jenis Use Case):', '', '```text',
-                plan.get('usecase_text', ''), '```']
+        body = [*(f'{n}. {step}' for n, step in enumerate(steps, start=1)), '']
+        for flow in plan.get('user_flows') or []:
+            body += [f"### {flow['name']}", '']
+            if flow['actor']:
+                body += [f"**Aktor:** {flow['actor']}", '']
+            body += [*(f'{n}. {step}' for n, step in enumerate(flow['steps'], start=1)), '']
+            if flow['edge_cases']:
+                body += ['**Kondisi khusus:**', '', _bullets(flow['edge_cases']), '']
+        body += ['### Use Case Diagram', '', 'Tempel di tab Teks UML, jenis Use Case:', '', '```text',
+                 plan.get('usecase_text', ''), '```']
     else:
         body = [pending]
     sections.append(('User Journey', body))
 
     if plan and plan.get('architecture'):
-        body = ['| Lapisan | Pilihan | Alasan |', '|---|---|---|',
+        body = [*_paragraphs(plan.get('architecture_overview')),
+                '| Lapisan | Pilihan | Alasan |', '|---|---|---|',
                 *[f"| {_cell(a['layer'])} | {_cell(a['choice'])} | {_cell(a['reason'])} |" for a in plan['architecture']]]
     else:
         body = [pending]
@@ -507,7 +657,8 @@ def render_prd_markdown(state: dict[str, Any], date: str = '') -> str:
         if plan.get('entities'):
             body += ['| Entitas | Kegunaan |', '|---|---|',
                      *[f"| {_cell(e['name'])} | {_cell(e['purpose'])} |" for e in plan['entities']], '']
-        body += ['```sql', plan.get('ddl', ''), '```']
+        body += _data_dictionary(plan.get('ddl', ''))
+        body += ['### Skema SQL', '', '```sql', plan.get('ddl', ''), '```']
     sections.append(('Data Model', body or [pending]))
 
     body = []
@@ -525,6 +676,11 @@ def render_prd_markdown(state: dict[str, Any], date: str = '') -> str:
             body += [f"### `{t['name']}`", '', t.get('description', ''), '', '```json',
                      json.dumps(t.get('parameters', {}), ensure_ascii=False, indent=2), '```', '']
         sections.append(('Tool-call AI', body[:-1]))
+
+    if idea.get('risks'):
+        sections.append(('Risiko dan Mitigasi', [
+            '| Risiko | Dampak | Mitigasi |', '|---|---|---|',
+            *[f"| {_cell(r['risk'])} | {_cell(r['impact'])} | {_cell(r['mitigation'])} |" for r in idea['risks']]]))
 
     rows = traceability(idea, plan) if idea and plan else []
     if rows:

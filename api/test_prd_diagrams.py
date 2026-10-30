@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient  # type: ignore
 
 import chat
+import prd
 import prd_diagrams
 from index import app  # type: ignore
 from prd_instruction import IDEA_EXAMPLE, PLAN_EXAMPLE  # type: ignore
@@ -58,7 +59,7 @@ def fake_model(monkeypatch, replies):
         with lock:
             seen.append((kind, messages, prefix))
             return replies[kind].pop(0)
-    monkeypatch.setattr(prd_diagrams, 'call_model', model)
+    monkeypatch.setattr(prd, 'call_model', model)
     return seen
 
 
@@ -102,7 +103,7 @@ def test_a_failed_model_call_keeps_the_rest_of_the_bundle(monkeypatch):
         if 'SEQUENCE DIAGRAM' in messages[0]['content']:
             raise chat.ChatError('Model AI sedang sibuk.', 503)
         return ACTIVITY
-    monkeypatch.setattr(prd_diagrams, 'call_model', model)
+    monkeypatch.setattr(prd, 'call_model', model)
     out = prd_diagrams.build_diagram_bundle(INPUT, IDEA_EXAMPLE['idea'], PLAN_EXAMPLE['plan'], 'v')
     assert 'Activity: Pencatatan Donasi' in out['pages'] and not any(p.startswith('Sequence') for p in out['pages'])
     assert out['errors'] == [{'line': 0, 'page': 'Sequence', 'message': 'Model AI sedang sibuk.'}]

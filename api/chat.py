@@ -76,12 +76,13 @@ def check_rate_limit(visitor: str, now: float | None = None) -> None:
 
 # ── Model call ───────────────────────────────────────────────────────────────
 
-def call_model(messages: list[dict[str, str]], prefix: str = 'AI') -> str:
+def call_model(messages: list[dict[str, str]], prefix: str = 'AI', model: str = '') -> str:
     """
     One chat completion from an OpenAI-compatible endpoint, configured by the
     variables <prefix>_BASE_URL, <prefix>_API_KEY and <prefix>_MODEL (AI_* by default).
+    `model` names another model on the same endpoint for this one call.
     """
-    model = os.environ.get(f'{prefix}_MODEL', '').strip()
+    model = model.strip() or os.environ.get(f'{prefix}_MODEL', '').strip()
     if not model:
         raise ChatError(f'Chatbot belum diatur: variabel {prefix}_MODEL belum diisi di server.', 503)
     base = os.environ.get(f'{prefix}_BASE_URL', 'http://localhost:20128/v1').rstrip('/')

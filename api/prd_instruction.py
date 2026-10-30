@@ -22,23 +22,84 @@ ATURAN KERAS
 IDEA_EXAMPLE = {
     'idea': {
         'product_name': 'DonasiKu',
+        'overview': ('DonasiKu adalah aplikasi web untuk yayasan kecil yang selama ini mencatat donasi secara manual di buku '
+                     'dan percakapan WhatsApp. Cara itu membuat admin harus menyalin ulang data setiap akhir bulan, bukti '
+                     'transfer mudah terselip, dan donatur tidak pernah tahu apakah donasinya sudah diterima.\n\n'
+                     'Aplikasi ini menyatukan pencatatan, verifikasi bukti transfer, dan laporan penyaluran dalam satu tempat. '
+                     'Donatur mengirim donasi beserta buktinya, admin mencocokkannya dengan mutasi rekening, dan laporan '
+                     'bulanan tersusun otomatis dari data yang sudah terverifikasi. Tujuannya: yayasan bisa '
+                     'mempertanggungjawabkan setiap rupiah tanpa kerja administrasi tambahan.'),
         'problem_statement': 'Yayasan kecil mencatat donasi di buku dan WhatsApp, sehingga laporan bulanan lambat dan donatur tidak bisa melihat penyaluran dananya.',
         'solution': 'Aplikasi web untuk mencatat donasi, memverifikasi bukti transfer, dan menampilkan laporan penyaluran yang bisa dilihat donatur.',
         'target_users': ['Donatur', 'Admin', 'Bank'],
+        'personas': [
+            {'role': 'Donatur', 'description': 'Perorangan yang berdonasi rutin atau sesekali lewat transfer bank, biasanya dari ponsel.',
+             'goals': ['Berdonasi tanpa ribet', 'Tahu donasinya sudah diterima'],
+             'pain_points': ['Tidak ada konfirmasi setelah transfer', 'Tidak tahu dana dipakai untuk apa']},
+            {'role': 'Admin', 'description': 'Pengurus yayasan yang mengelola keuangan sambil mengerjakan tugas lain.',
+             'goals': ['Verifikasi donasi dengan cepat', 'Laporan bulanan siap tanpa menyalin ulang'],
+             'pain_points': ['Bukti transfer tersebar di chat', 'Rekap manual memakan waktu berhari-hari']},
+        ],
         'core_value': 'Laporan donasi yang transparan tanpa kerja manual.',
         'mvp_scope': ['Input data donasi dan bukti transfer', 'Verifikasi donasi oleh admin',
                       'Laporan bulanan yang bisa diunduh', 'Riwayat donasi untuk donatur'],
         'non_goals': ['Pembayaran otomatis lewat payment gateway', 'Aplikasi mobile native'],
+        'functional_requirements': [
+            {'id': 'FR-01', 'feature': 'Pencatatan Donasi', 'priority': 'Wajib',
+             'requirement': 'Donatur dapat mengisi nama, email, jumlah donasi, dan mengunggah bukti transfer (JPG, PNG, atau PDF, maksimal 2 MB).'},
+            {'id': 'FR-02', 'feature': 'Pencatatan Donasi', 'priority': 'Wajib',
+             'requirement': 'Setiap donasi baru tersimpan dengan status "menunggu" dan tampil di daftar donasi masuk milik admin.'},
+            {'id': 'FR-03', 'feature': 'Verifikasi Donasi', 'priority': 'Wajib',
+             'requirement': 'Admin dapat menerima atau menolak donasi; penolakan wajib disertai catatan alasan.'},
+            {'id': 'FR-04', 'feature': 'Verifikasi Donasi', 'priority': 'Penting',
+             'requirement': 'Donatur menerima email berisi hasil verifikasi beserta catatan dari admin.'},
+            {'id': 'FR-05', 'feature': 'Pencatatan Donasi', 'priority': 'Penting',
+             'requirement': 'Admin dapat menyaring daftar donasi menurut status (menunggu, terverifikasi, ditolak) dan tanggal.'},
+            {'id': 'FR-06', 'feature': 'Verifikasi Donasi', 'priority': 'Wajib',
+             'requirement': 'Donasi yang sudah diverifikasi tidak dapat diubah lagi statusnya, agar laporan tidak berubah diam-diam.'},
+        ],
+        'non_functional_requirements': [
+            {'category': 'Keamanan', 'title': 'Akses admin terlindungi',
+             'description': 'Halaman verifikasi hanya bisa dibuka admin yang sudah masuk; donatur hanya melihat donasinya sendiri.'},
+            {'category': 'Performa', 'title': 'Daftar donasi cepat dimuat',
+             'description': 'Daftar donasi masuk tampil dalam waktu kurang dari 2 detik untuk 1.000 data, dengan paginasi.'},
+            {'category': 'Aksesibilitas', 'title': 'Nyaman di ponsel',
+             'description': 'Form donasi dapat diisi dengan baik di layar ponsel 360 px, karena sebagian besar donatur memakai ponsel.'},
+            {'category': 'Keandalan', 'title': 'Bukti transfer tidak hilang',
+             'description': 'File bukti disimpan di penyimpanan file terpisah dengan cadangan, dan tautannya tercatat di database.'},
+        ],
+        'success_metrics': [
+            {'metric': 'Waktu verifikasi donasi', 'target': 'Kurang dari 1 hari kerja', 'how': 'Selisih waktu donasi masuk dan diverifikasi'},
+            {'metric': 'Waktu menyusun laporan bulanan', 'target': 'Kurang dari 10 menit', 'how': 'Dicatat admin setiap akhir bulan'},
+            {'metric': 'Donasi tercatat lewat aplikasi', 'target': '90% dari semua donasi', 'how': 'Dibandingkan dengan mutasi rekening'},
+        ],
+        'risks': [
+            {'risk': 'Bukti transfer palsu atau hasil suntingan', 'impact': 'Donasi fiktif tercatat dalam laporan',
+             'mitigation': 'Admin wajib mencocokkan dengan mutasi rekening sebelum menerima donasi.'},
+            {'risk': 'Admin lupa memverifikasi', 'impact': 'Donatur tidak mendapat konfirmasi dan kecewa',
+             'mitigation': 'Daftar donasi menunggu ditampilkan di halaman awal admin beserta jumlahnya.'},
+        ],
         'features': [
             {'name': 'Pencatatan Donasi', 'phase': 1,
-             'sub_features': ['Form donasi', 'Unggah bukti transfer', 'Daftar donasi masuk']},
+             'description': ('Pintu masuk semua donasi. Donatur mengisi form singkat dan mengunggah bukti transfer, lalu donasi '
+                             'langsung masuk ke antrean verifikasi admin tanpa perlu dikirim lewat chat.'),
+             'user_story': 'Sebagai Donatur, saya ingin mengirim donasi beserta bukti transfer dalam satu form, agar donasi saya tercatat tanpa harus menghubungi admin.',
+             'sub_features': ['Form donasi', 'Unggah bukti transfer', 'Daftar donasi masuk'],
+             'acceptance': ['Form menolak jumlah 0 atau negatif', 'Donasi baru tampil di daftar admin dengan status menunggu']},
             {'name': 'Verifikasi Donasi', 'phase': 1,
-             'sub_features': ['Terima atau tolak donasi', 'Catatan verifikasi', 'Notifikasi ke donatur']},
+             'description': ('Admin memeriksa setiap donasi terhadap mutasi rekening, lalu menerimanya atau menolaknya dengan '
+                             'catatan. Hanya donasi terverifikasi yang masuk ke laporan.'),
+             'user_story': 'Sebagai Admin, saya ingin menerima atau menolak donasi dari satu halaman, agar laporan hanya berisi dana yang benar-benar masuk.',
+             'sub_features': ['Terima atau tolak donasi', 'Catatan verifikasi', 'Notifikasi ke donatur'],
+             'acceptance': ['Penolakan tanpa catatan tidak bisa disimpan', 'Donatur menerima email setelah status berubah']},
             {'name': 'Laporan Bulanan', 'phase': 2,
+             'description': 'Rekap otomatis donasi terverifikasi per program setiap bulan, siap dibagikan ke pengurus dan donatur tanpa menyalin data.',
              'sub_features': ['Ringkasan per program', 'Unduh PDF', 'Grafik penyaluran']},
             {'name': 'Riwayat Donatur', 'phase': 2,
+             'description': 'Halaman pribadi donatur untuk melihat semua donasinya, status verifikasi, dan bukti penyalurannya.',
              'sub_features': ['Daftar donasi saya', 'Status verifikasi', 'Bukti penyaluran']},
             {'name': 'Akun dan Pengaturan', 'phase': 3,
+             'description': 'Pengaturan dasar yayasan dan akun admin, termasuk rekening tujuan yang ditampilkan di form donasi.',
              'sub_features': ['Masuk dan keluar', 'Data yayasan', 'Rekening penerima']},
         ],
     },
@@ -54,6 +115,23 @@ PLAN_EXAMPLE = {
         'usecase_text': ('=== DonasiKu\nsystem DonasiKu {\n  (Input Donasi)\n  (Verifikasi Donasi)\n}\n'
                          'actor Donatur\nactor Admin\nactor Bank <<sekunder>>\n'
                          'Donatur --> (Input Donasi)\nAdmin --> (Verifikasi Donasi)\nBank --> (Verifikasi Donasi)'),
+        'architecture_overview': ('Browser menjalankan aplikasi React yang memanggil API FastAPI lewat HTTPS dengan data JSON. '
+                                  'API memvalidasi setiap permintaan, menyimpan data donasi di PostgreSQL, dan menyimpan file '
+                                  'bukti transfer di penyimpanan file; database hanya menyimpan tautannya.\n\n'
+                                  'Saat admin memverifikasi donasi, API memperbarui status lalu mengirim email ke donatur. '
+                                  'Laporan dibaca langsung dari donasi berstatus terverifikasi, sehingga tidak ada data ganda.'),
+        'user_flows': [
+            {'name': 'Mengirim donasi', 'actor': 'Donatur',
+             'steps': ['Donatur membuka halaman donasi.', 'Donatur mengisi nama, email, dan jumlah.',
+                       'Donatur mengunggah bukti transfer lalu menekan Kirim.',
+                       'Sistem menyimpan donasi berstatus menunggu dan menampilkan nomor donasi.'],
+             'edge_cases': ['Jumlah 0 atau kosong: form menampilkan pesan dan tidak terkirim.',
+                            'File lebih dari 2 MB: unggahan ditolak dengan pesan ukuran maksimal.']},
+            {'name': 'Memverifikasi donasi', 'actor': 'Admin',
+             'steps': ['Admin membuka daftar donasi berstatus menunggu.', 'Admin membuka bukti transfer dan mencocokkannya dengan mutasi bank.',
+                       'Admin memilih Terima atau Tolak beserta catatan.', 'Sistem memperbarui status dan mengirim email ke donatur.'],
+             'edge_cases': ['Donasi sudah diverifikasi admin lain: sistem menampilkan status terbaru dan tidak mengubahnya lagi.']},
+        ],
         'architecture': [
             {'layer': 'Frontend', 'choice': 'React + Vite', 'reason': 'Sesuai pilihan pengguna, ringan untuk dashboard.'},
             {'layer': 'Backend', 'choice': 'FastAPI', 'reason': 'API JSON sederhana dengan validasi bawaan.'},
@@ -146,19 +224,41 @@ CONTOH
 IDEA = '''\
 TAHAP 1: IDE (STRUKTUR)
 Rumuskan ide pengguna menjadi struktur yang jelas. Skema JSON:
-{"idea": {"product_name": str, "problem_statement": str, "solution": str, "target_users": [str],
+{"idea": {"product_name": str, "overview": str, "problem_statement": str, "solution": str, "target_users": [str],
+          "personas": [{"role": str, "description": str, "goals": [str], "pain_points": [str]}],
           "core_value": str, "mvp_scope": [str], "non_goals": [str],
-          "features": [{"name": str, "phase": int, "sub_features": [str]}]},
+          "functional_requirements": [{"id": str, "feature": str, "requirement": str, "priority": str}],
+          "non_functional_requirements": [{"category": str, "title": str, "description": str}],
+          "success_metrics": [{"metric": str, "target": str, "how": str}],
+          "risks": [{"risk": str, "impact": str, "mitigation": str}],
+          "features": [{"name": str, "phase": int, "description": str, "user_story": str,
+                        "sub_features": [str], "acceptance": [str]}]},
  "assumptions": [str]}
+PRD ini dibaca orang dan AI coding agent, jadi JABARKAN, jangan hanya daftar kata kunci: setiap penjelasan berupa
+kalimat lengkap yang menyebut siapa, apa, dan mengapa, dengan angka konkret bila masuk akal (batas ukuran file, waktu, jumlah).
 - product_name: nama singkat (1 sampai 3 kata) yang menggambarkan ide pengguna.
+- overview: 2 sampai 3 paragraf (pisahkan dengan baris kosong, total 100 sampai 200 kata): latar belakang dan cara
+  pengguna mengatasi masalahnya sekarang, apa yang dilakukan aplikasi, dan tujuan akhirnya.
 - problem_statement: 1 sampai 2 kalimat, siapa yang punya masalah dan apa akibatnya.
 - target_users: SEMUA pihak yang terlibat, dengan nama pendek yang akan dipakai persis sebagai nama aktor:
   pengguna yang memakai aplikasi (Admin, Karyawan) DAN pihak yang menerima hasil atau sistem luar (Pemilik, Bank).
+- personas: satu untuk setiap target_users yang memakai aplikasi secara langsung (role = nama persis dari target_users),
+  dengan description 1 sampai 2 kalimat, 2 sampai 3 goals, dan 2 sampai 3 pain_points.
+- functional_requirements: 6 sampai 15 kebutuhan untuk fitur phase 1, id FR-01, FR-02, ...; feature = nama fitur phase 1
+  persis; requirement = satu kalimat "Sistem/Aktor dapat ..." yang bisa diuji, lengkap dengan aturan dan batasnya;
+  priority "Wajib", "Penting", atau "Opsional".
+- non_functional_requirements: 4 sampai 7 butir dari kategori Keamanan, Performa, Aksesibilitas, Keandalan,
+  Skalabilitas, Privasi, atau Kemudahan Pakai, disesuaikan dengan ide dan tech stack; title 2 sampai 5 kata,
+  description 1 sampai 2 kalimat dengan ukuran yang jelas.
+- success_metrics: 3 sampai 5 ukuran keberhasilan produk dengan target angka dan cara mengukurnya.
+- risks: 3 sampai 5 risiko produk atau teknis yang nyata untuk ide ini, dengan dampak dan mitigasinya.
 - mvp_scope: 3 sampai 7 kemampuan inti, masing-masing satu kalimat pendek.
 - non_goals: 2 sampai 5 hal yang sengaja tidak dikerjakan di MVP.
 - features: 5 sampai 9 fitur utama, nama 2 sampai 3 kata. phase 1 = MVP (fitur paling inti dari jawaban pengguna),
   phase 2 sampai 4 = pengembangan berikutnya, urut dari yang paling penting. Setiap fitur punya 3 sampai 4 sub_features
   (2 sampai 4 kata, berupa hal yang bisa dilakukan pengguna). mvp_scope = kemampuan dari fitur phase 1.
+  Setiap fitur punya description 2 sampai 3 kalimat (apa yang terjadi dan mengapa penting). Fitur phase 1 juga punya
+  user_story ("Sebagai <peran>, saya ingin ..., agar ...") dan 2 sampai 4 acceptance yang bisa dicek.
 
 CONTOH
 ''' + json.dumps(IDEA_EXAMPLE, ensure_ascii=False)
@@ -166,7 +266,8 @@ CONTOH
 PLAN = '''\
 TAHAP 2: PRD (RENCANA)
 Susun rencana teknis dari ide yang sudah dirumuskan. Skema JSON:
-{"plan": {"user_journey": [str], "usecase_text": str,
+{"plan": {"user_journey": [str], "user_flows": [{"name": str, "actor": str, "steps": [str], "edge_cases": [str]}],
+          "usecase_text": str, "architecture_overview": str,
           "architecture": [{"layer": str, "choice": str, "reason": str}],
           "ddl": str, "entities": [{"name": str, "purpose": str}],
           "api": [{"method": str, "path": str, "summary": str, "request": object, "response": object, "errors": [str]}],
@@ -176,6 +277,12 @@ Susun rencana teknis dari ide yang sudah dirumuskan. Skema JSON:
  "assumptions": [str]}
 SEMUA BAGIAN HARUS SINKRON DENGAN HASIL TAHAP 1; aplikasi memeriksa setiap aturan di bawah dan menolak yang tidak cocok.
 - user_journey: langkah bernomor implisit, satu kalimat per langkah, dari sudut pandang pengguna.
+- user_flows: satu alur rinci untuk setiap fitur phase 1 (actor = nama persis dari target_users): 4 sampai 8 steps
+  berupa kalimat lengkap termasuk apa yang dilakukan sistem, dan 1 sampai 3 edge_cases (kondisi gagal atau khusus
+  beserta respons sistem).
+- architecture_overview: 2 paragraf yang menjelaskan alur data antar-lapisan (browser, API, database, layanan luar),
+  di mana file atau data sensitif disimpan, dan bagaimana fitur utama berjalan di atas arsitektur itu.
+- architecture: alasan setiap pilihan ditulis 1 kalimat yang terkait kebutuhan produk, budget, atau keahlian pengguna.
 - usecase_text: use case diagram dalam format aplikasi ini, dibaca kiri ke kanan:
     "=== Nama", lalu "system Nama {" berisi satu "(Use Case)" per baris, lalu "}",
     lalu "actor Nama" untuk aktor utama (kiri), "actor Nama <<sekunder>>" untuk penerima hasil (kanan),

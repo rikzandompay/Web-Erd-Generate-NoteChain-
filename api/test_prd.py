@@ -4,6 +4,7 @@
 import copy
 import json
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient  # type: ignore
 
@@ -168,7 +169,7 @@ def test_instruction_examples_pass_the_same_checks():
     assert tasks_consistency(prd.normalize_plan(PLAN_EXAMPLE), prd.order_tasks(TASKS_EXAMPLE['tasks'])[0]) == []
     assert len(prd.normalize_questions(QUESTIONS_EXAMPLE)) == 5
     for stage in ('questions', 'idea', 'plan', 'tasks'):
-        assert len(instruction(stage)) < 9000
+        assert len(instruction(stage)) < 14000
     assert 'paling banyak 40' in instruction('tasks', 'pro')
 
 
@@ -182,11 +183,16 @@ def _full_state():
 def test_markdown_has_every_section_in_order():
     md = prd.render_prd_markdown(_full_state(), '2026-10-25')
     heads = [line for line in md.splitlines() if line.startswith('## ')]
-    assert heads == ['## 1. Ringkasan', '## 2. Scope MVP', '## 3. Struktur Fitur', '## 4. User Journey',
-                     '## 5. Arsitektur', '## 6. Data Model', '## 7. API Spec', '## 8. Keterlacakan Fitur',
-                     '## 9. Atomic Tasks', '## 10. Asumsi dan Pertanyaan Terbuka']
+    assert heads == ['## 1. Ringkasan', '## 2. Pengguna dan Persona', '## 3. Tujuan dan Metrik Keberhasilan',
+                     '## 4. Scope MVP', '## 5. Kebutuhan (Requirements)', '## 6. Struktur Fitur', '## 7. User Journey',
+                     '## 8. Arsitektur', '## 9. Data Model', '## 10. API Spec', '## 11. Risiko dan Mitigasi',
+                     '## 12. Keterlacakan Fitur', '## 13. Atomic Tasks', '## 14. Asumsi dan Pertanyaan Terbuka']
     assert '| Verifikasi Donasi | Catatan verifikasi | Verifikasi Donasi | donasi | PATCH /api/donasi/{id}/verifikasi |' in md
-    assert '### Fase 1 (MVP)' in md and '- **Pencatatan Donasi**: Form donasi, Unggah bukti transfer' in md
+    assert '### Fase 1 (MVP)' in md and '#### Pencatatan Donasi' in md and '**User story.** Sebagai Donatur' in md
+    assert '**Kriteria penerimaan:**' in md and '| FR-03 | Verifikasi Donasi |' in md
+    assert '- **Akses admin terlindungi** (Keamanan):' in md and '### Memverifikasi donasi' in md
+    assert '#### Tabel `donasi`' in md and '| 3 | jumlah | DECIMAL(12, 2) |' in md
+    assert md.split('## 1. Ringkasan\n\n', 1)[1].startswith('DonasiKu adalah aplikasi web')
     assert md.startswith('# PRD: DonasiKu') and '| Tanggal | 2026-10-25 |' in md
     assert '```sql\nCREATE TABLE donatur' in md and '### `POST /api/donasi`' in md
     assert '| T02 | Endpoint POST /api/donasi | T01 |' in md
@@ -199,7 +205,41 @@ def test_markdown_marks_missing_stages_and_tool_section_only_when_needed():
     state['plan'] = copy.deepcopy(PLAN_EXAMPLE['plan'])
     state['plan']['ai_tools'] = [{'name': 'cari_donasi', 'description': 'Mencari donasi', 'parameters': {'type': 'object'}}]
     md = prd.render_prd_markdown(state)
-    assert '## 8. Tool-call AI' in md and '## 9. Keterlacakan Fitur' in md and '## 10. Atomic Tasks' in md and '## 11. Asumsi' in md
+    assert '## 11. Tool-call AI' in md and '## 12. Risiko dan Mitigasi' in md and '## 14. Atomic Tasks' in md and '## 15. Asumsi' in md
+
+
+def test_prd_made_before_the_written_out_sections_still_renders():
+    idea = copy.deepcopy(IDEA_EXAMPLE['idea'])
+    for key in ('overview', 'personas', 'functional_requirements', 'non_functional_requirements', 'success_metrics', 'risks'):
+        idea.pop(key)
+    for f in idea['features']:
+        for key in ('description', 'user_story', 'acceptance'):
+            f.pop(key, None)
+    plan = copy.deepcopy(PLAN_EXAMPLE['plan'])
+    plan.pop('user_flows')
+    plan.pop('architecture_overview')
+    md = prd.render_prd_markdown({'input': INPUT, 'idea': idea, 'plan': plan, 'tasks': TASKS_EXAMPLE['tasks']})
+    heads = [line.split('. ', 1)[1] for line in md.splitlines() if line.startswith('## ')]
+    assert heads == ['Ringkasan', 'Scope MVP', 'Struktur Fitur', 'User Journey', 'Arsitektur', 'Data Model',
+                     'API Spec', 'Keterlacakan Fitur', 'Atomic Tasks', 'Asumsi dan Pertanyaan Terbuka']
+    assert '- **Pencatatan Donasi**: Form donasi, Unggah bukti transfer' in md and 'Persona' not in md
+
+
+def test_a_thin_idea_gets_a_repair_round(monkeypatch):
+    thin = copy.deepcopy(IDEA_EXAMPLE)
+    thin['idea']['overview'] = 'Aplikasi donasi.'
+    thin['idea']['non_functional_requirements'] = []
+    seen = fake_model(monkeypatch, thin, IDEA_EXAMPLE)
+    out = prd.prd_idea(INPUT, 'v')
+    assert len(seen) == 2 and 'overview terlalu singkat' in seen[1][-1]['content']
+    assert 'non_functional_requirements minimal 3' in seen[1][-1]['content']
+    assert out['idea']['overview'].startswith('DonasiKu adalah')
+
+
+def test_requirements_must_name_a_phase_one_feature():
+    idea = prd.normalize_idea(copy.deepcopy(IDEA_EXAMPLE))
+    idea['functional_requirements'][0]['feature'] = 'Laporan Bulanan'
+    assert any('Laporan Bulanan' in p for p in prd.idea_depth(idea))
 
 
 def test_the_sql_and_use_case_in_the_markdown_build_diagrams():
@@ -278,8 +318,8 @@ def test_questions_without_choices_are_dropped():
 def test_features_are_cleaned_and_sorted_by_phase():
     features = prd.normalize_features([{'name': 'B', 'phase': 3, 'sub_features': ['x']}, {'name': '', 'phase': 1},
                                        {'name': 'A', 'phase': '9'}, {'name': 'C', 'phase': 'x'}])
-    assert features == [{'name': 'C', 'phase': 1, 'sub_features': []}, {'name': 'B', 'phase': 3, 'sub_features': ['x']},
-                        {'name': 'A', 'phase': 4, 'sub_features': []}]
+    assert [(f['name'], f['phase'], f['sub_features']) for f in features] == [('C', 1, []), ('B', 3, ['x']), ('A', 4, [])]
+    assert features[0]['description'] == '' and features[0]['acceptance'] == []
     idea = copy.deepcopy(IDEA_EXAMPLE)
     idea['idea']['mvp_scope'] = []
     assert prd.normalize_idea(idea)['mvp_scope'] == ['Pencatatan Donasi', 'Verifikasi Donasi']
@@ -321,3 +361,48 @@ def test_call_model_reads_the_prefixed_variables(monkeypatch):
     monkeypatch.delenv('PRD_AI_API_KEY')
     chat.call_model([{'role': 'user', 'content': 'x'}], 'PRD_AI')
     assert sent['auth'] is None                          # never falls back to the chat's key
+
+
+# ── A model per skill level ──────────────────────────────────────────────────
+
+def _record_models(monkeypatch):
+    used = []
+    monkeypatch.setattr(prd, 'call_model', lambda messages, prefix='AI', model='': (used.append((prefix, model)), json.dumps(QUESTIONS_EXAMPLE))[1])
+    return used
+
+
+def test_each_skill_level_can_have_its_own_model(monkeypatch):
+    used = _record_models(monkeypatch)
+    monkeypatch.setenv('PRD_AI_MODEL', 'default/model')
+    monkeypatch.setenv('PRD_AI_MODEL_PRO', 'cc/claude-opus-5')
+    monkeypatch.setenv('PRD_AI_MODEL_PEMULA', 'ag/gemini-3.8-flash')
+    monkeypatch.delenv('PRD_AI_MODEL_MENENGAH', raising=False)
+    for skill in ('pro', 'pemula', 'menengah'):
+        prd.ask_model([], prd.model_prefix(), skill)
+    assert used == [('PRD_AI', 'cc/claude-opus-5'), ('PRD_AI', 'ag/gemini-3.8-flash'), ('PRD_AI', '')]
+
+
+def test_skill_models_are_ignored_without_the_prd_model_and_for_the_questions(monkeypatch):
+    used = _record_models(monkeypatch)
+    monkeypatch.setenv('PRD_AI_MODEL_PRO', 'cc/claude-opus-5')
+    monkeypatch.delenv('PRD_AI_MODEL', raising=False)
+    prd.ask_model([], prd.model_prefix(), 'pro')
+    assert used == [('AI', '')]
+    used.clear()
+    monkeypatch.setenv('PRD_AI_MODEL', 'default/model')
+    prd.prd_questions({'idea_text': INPUT['idea_text']}, 'v')
+    assert used == [('PRD_AI', '')]
+
+
+def test_call_model_uses_the_model_it_is_given(monkeypatch):
+    sent = {}
+
+    def post(url, **kw):
+        sent.update(kw['json'])
+        return httpx.Response(200, json={'choices': [{'message': {'content': 'halo'}}]})
+    monkeypatch.setattr(chat.httpx, 'post', post)
+    monkeypatch.setenv('PRD_AI_MODEL', 'default/model')
+    chat.call_model([{'role': 'user', 'content': 'x'}], 'PRD_AI', 'cc/claude-opus-5')
+    assert sent['model'] == 'cc/claude-opus-5'
+    chat.call_model([{'role': 'user', 'content': 'x'}], 'PRD_AI')
+    assert sent['model'] == 'default/model'

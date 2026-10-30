@@ -4,7 +4,8 @@ import axios from 'axios';
 import { ArrowRight, Download } from 'lucide-react';
 import CodeExport from './CodeExport';
 import OutputPanel from './OutputPanel';
-import { apiErrorMessage, downloadFile, drawioUrl, pageNames } from '../drawio';
+import PrdDocument from './PrdDocument';
+import { apiErrorMessage, drawioUrl, pageNames } from '../drawio';
 
 // A guided wizard, one question per screen: Ide (idea → questions → technology → feature map)
 // → PRD → Task. Each AI step runs on the backend (api/prd.py). A step is only asked again when
@@ -64,6 +65,7 @@ const EMPTY = {
   idea: null, plan: null, checks: null, tasks: null, problems: [],
   assumptions: { idea: [], plan: [], tasks: [] },
   made: { questions: '', idea: '', plan: '', tasks: '' },   // what each result was made from
+  versions: [],                           // finished PRDs, newest last: { n, at, state }
 };
 
 const FIELD = 'w-full rounded-md border border-edge bg-panel px-3 py-2 text-sm leading-6 text-ink';
@@ -260,7 +262,6 @@ export default function PrdMode() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showRef, setShowRef] = useState(false);
-  const [exportNote, setExportNote] = useState('');
   const [diagram, setDiagram] = useState({ status: 'idle', result: null, error: '' });
   const top = useRef(null);
 
@@ -346,8 +347,23 @@ export default function PrdMode() {
     if (made.tasks !== source.tasks || !tasks) {
       const data = await call('tasks', { input: payload, idea, plan });
       if (!data) return;
-      update((d) => ({ tasks: data.tasks, problems: data.problems, assumptions: { ...d.assumptions, tasks: data.assumptions },
-                       made: { ...d.made, tasks: JSON.stringify([payload, idea, plan]) } }));
+      update((d) => {
+        const assumptions = { ...d.assumptions, tasks: data.assumptions };
+        const checks = d.checks || {};
+        // Every finished PRD is kept as a version, so an earlier one can be read again
+        const version = {
+          n: (d.versions?.[d.versions.length - 1]?.n || 0) + 1,
+          at: new Date().toISOString(),
+          state: {
+            input: payload, idea, plan, tasks: data.tasks,
+            assumptions: [...assumptions.idea, ...assumptions.plan, ...assumptions.tasks],
+            issues: [...(checks.ddl_errors || []), ...(checks.usecase_errors || []), ...(checks.consistency || []), ...data.problems],
+          },
+        };
+        return { tasks: data.tasks, problems: data.problems, assumptions,
+                 made: { ...d.made, tasks: JSON.stringify([payload, idea, plan]) },
+                 versions: [...(d.versions || []), version].slice(-10) };
+      });
     }
     go('tasks');
   };
@@ -374,23 +390,6 @@ export default function PrdMode() {
     reader.onload = () => setInput('context', { ...input.context, sql_text: String(reader.result), sql_name: file.name });
     reader.onerror = () => setError('File tidak bisa dibaca.');
     reader.readAsText(file);
-  };
-
-  const exportMarkdown = async (how) => {
-    setExportNote('');
-    setError('');
-    const assumptions = [...draft.assumptions.idea, ...draft.assumptions.plan, ...draft.assumptions.tasks];
-    try {
-      const { data } = await axios.post('/api/prd/markdown', { input: payload, idea, plan, tasks, assumptions });
-      if (how === 'download') {
-        setExportNote(`${downloadFile(data.markdown, data.file_name, 'text/markdown')} diunduh.`);
-      } else {
-        await navigator.clipboard.writeText(data.markdown);
-        setExportNote('Markdown tersalin.');
-      }
-    } catch (err) {
-      setError(err.response ? apiErrorMessage(err) : 'Browser menolak menyalin. Pakai tombol unduh.');
-    }
   };
 
   const slugName = (idea?.product_name || 'prd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'prd';
@@ -447,13 +446,21 @@ export default function PrdMode() {
   const restart = () => {
     setDraft(EMPTY);
     setError('');
-    setExportNote('');
     setDiagram({ status: 'idle', result: null, error: '' });
   };
 
   const furthest = tasks ? 'tasks' : plan ? 'prd' : idea ? 'structure' : questions ? 'questions' : null;
   const answered = (questions || []).filter((q, i) => replies[i]?.skipped || replyText(q, replies[i])).length;
   const template = TEMPLATES.find((t) => t.id === input.template) || TEMPLATES[0];
+  const checkList = draft.checks
+    ? [...draft.checks.ddl_errors, ...draft.checks.usecase_errors, ...(draft.checks.consistency || [])] : [];
+  // Drafts saved before versions existed still open as version 1
+  const versions = draft.versions?.length ? draft.versions : tasks ? [{
+    n: 1, at: new Date().toISOString(),
+    state: { input: payload, idea, plan, tasks,
+             assumptions: [...draft.assumptions.idea, ...draft.assumptions.plan, ...draft.assumptions.tasks],
+             issues: [...checkList, ...(draft.problems || [])] },
+  }] : [];
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -662,9 +669,9 @@ export default function PrdMode() {
             </DocSection>
             <DocSection title="Data model dan diagram">
               {draft.checks && (
-                [...draft.checks.ddl_errors, ...draft.checks.usecase_errors].length
-                  ? <Notes title="Masih perlu diperbaiki" items={[...draft.checks.ddl_errors, ...draft.checks.usecase_errors]} />
-                  : <p className="m-0 text-muted">Skema SQL dan use case sudah diperiksa: tidak ada kesalahan.</p>
+                checkList.length
+                  ? <Notes title="Masih perlu diperbaiki" items={checkList} />
+                  : <p className="m-0 text-muted">Sudah diperiksa: skema SQL dan use case benar, aktor sama dengan target pengguna, dan setiap fitur Fase 1 punya use case, tabel, serta endpoint.</p>
               )}
               <ul className="m-0 list-disc space-y-1 pl-5">
                 {plan.entities.map((e) => <li key={e.name}><code className="font-mono">{e.name}</code> <span className="text-muted">{e.purpose}</span></li>)}
@@ -712,31 +719,8 @@ export default function PrdMode() {
         </Screen>
       )}
 
-      {screen === 'tasks' && tasks && (
-        <Screen title="Task" lead="Kerjakan berurutan. Sebuah task dimulai setelah task yang ditunggunya selesai.">
-          <div className="space-y-3">
-            <Notes title="Masih perlu diperbaiki" items={draft.problems} />
-            <ol className="m-0 list-none space-y-2 p-0">
-              {tasks.map((t) => (
-                <li key={t.id} className="rounded-md border border-line bg-panel px-4 py-3 text-sm">
-                  <p className="m-0"><strong className="font-mono">{t.id}</strong> <span className="font-medium">{t.title}</span></p>
-                  {t.description && <p className="m-0 mt-1">{t.description}</p>}
-                  <p className="m-0 mt-1 text-muted">
-                    {t.depends_on.length ? `Setelah ${t.depends_on.join(', ')}` : 'Bisa langsung dikerjakan'}
-                    {t.files.length > 0 && <>. File: <span className="font-mono break-all">{t.files.join(', ')}</span></>}
-                  </p>
-                </li>
-              ))}
-            </ol>
-            <Notes title="Asumsi AI" items={draft.assumptions.tasks} />
-          </div>
-          <Actions onBack={() => go('prd')} error={error} note={exportNote}>
-            <button type="button" onClick={() => exportMarkdown('copy')} className={SECONDARY}>Salin Markdown</button>
-            <button type="button" onClick={() => exportMarkdown('download')} className={PRIMARY}>
-              <Download size={18} aria-hidden="true" /> Unduh PRD.md
-            </button>
-          </Actions>
-        </Screen>
+      {screen === 'tasks' && versions.length > 0 && (
+        <PrdDocument versions={versions} onBack={() => go('prd')} />
       )}
     </div>
   );

@@ -168,11 +168,12 @@ export default function GuideMode({ onOpenMode }) {
             <li><strong>Teknologi.</strong> Pilih template (Next.js, React + FastAPI, Laravel, Flutter + Supabase, atau atur sendiri), tingkat keahlian, dan budget server, lalu tekan <strong>Bikin Struktur</strong>.</li>
             <li><strong>Struktur fitur.</strong> Peta fitur per fase (Fase 1 adalah MVP) beserta sub-fiturnya.</li>
             <li><strong>PRD.</strong> User journey, arsitektur, skema database, dan API. Skema dan use case diperiksa dengan parser aplikasi ini, dan bisa langsung dijadikan diagram lewat <strong>Buat ERD dari PRD</strong> dan <strong>Buat Use Case dari PRD</strong>.</li>
-            <li><strong>Task.</strong> Task kecil berurutan sesuai dependensi, lalu <strong>Unduh PRD.md</strong> atau <strong>Salin Markdown</strong>.</li>
+            <li><strong>Task.</strong> Task kecil berurutan sesuai dependensi. Hasil akhirnya tampil sebagai dokumen PRD dengan daftar isi di kiri; setiap kali Task dibuat ulang, tersimpan sebagai versi baru yang bisa dipilih di atas dokumen. Dari sana, <strong>Unduh PRD.md</strong> atau <strong>Salin Markdown</strong>.</li>
           </ol>
           <ul className="m-0 list-disc space-y-1 pl-5">
             <li><strong>Buat paket diagram lengkap</strong> di layar PRD membuat satu file .drawio berisi ERD, Class Diagram, Kamus Data, Use Case, serta Sequence dan Activity untuk setiap fitur Fase 1. Sequence dan Activity ditulis AI dan diperiksa parser; halaman yang masih salah disebutkan di panel Hasil.</li>
             <li><strong>Kode awal dari skema</strong> di layar PRD membuat migration dan model sesuai template yang dipilih.</li>
+            <li><strong>Semua bagian dijaga sinkron.</strong> Aktor use case harus sama dengan target pengguna, setiap fitur Fase 1 harus punya use case, setiap sub-fitur harus punya tabel dan endpoint yang benar-benar ada di skema dan API, dan setiap endpoint harus dikerjakan di task. Bagian <strong>Keterlacakan Fitur</strong> di dokumen menunjukkan pemetaan itu. Yang belum cocok diperbaiki AI sekali; sisanya ditampilkan, tidak disembunyikan.</li>
             <li><strong>Kembali</strong> dan maju lagi tidak memanggil AI ulang. AI baru dipanggil lagi kalau jawabanmu di langkah sebelumnya berubah.</li>
             <li>Draf tersimpan di browser ini; <strong>Mulai PRD baru</strong> menghapusnya. Bagian "Asumsi AI" berisi hal yang ditebak AI, jadi periksa sebelum dipakai.</li>
           </ul>

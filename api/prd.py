@@ -26,6 +26,7 @@ import re
 from typing import Any
 
 from chat import ChatError, call_model, check_rate_limit, clean_reply  # type: ignore
+from prd_consistency import plan_consistency, tasks_consistency, traceability  # type: ignore
 from prd_instruction import MAX_TASKS, instruction  # type: ignore
 from sql_parser import parse_sql  # type: ignore
 from uml import generate_uml  # type: ignore
@@ -220,6 +221,12 @@ def normalize_plan(answer: dict[str, Any]) -> dict[str, Any]:
         'ai_tools': [{'name': _text(t.get('name'), 60), 'description': _text(t.get('description'), 300),
                       'parameters': t.get('parameters') if isinstance(t.get('parameters'), dict) else {}}
                      for t in _dicts(plan.get('ai_tools'))],
+        # The model's own mapping, checked in prd_consistency.py
+        'usecase_features': [{'usecase': _text(m.get('usecase'), 120), 'feature': _text(m.get('feature'), 120)}
+                             for m in _dicts(plan.get('usecase_features')) if m.get('usecase')],
+        'coverage': [{'sub_feature': _text(c.get('sub_feature'), 120), 'tables': _strings(c.get('tables'), 8),
+                      'endpoint': _text(c.get('endpoint'), 200)}
+                     for c in _dicts(plan.get('coverage')) if c.get('sub_feature')],
     }
     if not out['ddl'] or not out['usecase_text']:
         raise ValueError('ddl dan usecase_text wajib terisi')
@@ -398,13 +405,17 @@ def prd_plan(raw_input: dict[str, Any], idea: dict[str, Any], visitor: str) -> d
     check_rate_limit(visitor)
     content = _brief(data) + '\n\nHASIL TAHAP 1 (IDE)\n' + json.dumps(idea, ensure_ascii=False)
 
+    def all_checks(plan):
+        return {**plan_checks(plan), 'consistency': plan_consistency(idea, plan)}
+
     def check(answer):
         plan = normalize_plan(answer)
-        checks = plan_checks(plan)
-        return plan, [*(f'DDL: {e}' for e in checks['ddl_errors']), *(f'Use case: {e}' for e in checks['usecase_errors'])]
+        checks = all_checks(plan)
+        return plan, [*(f'DDL: {e}' for e in checks['ddl_errors']), *(f'Use case: {e}' for e in checks['usecase_errors']),
+                      *(f'Tidak sinkron dengan tahap Ide: {e}' for e in checks['consistency'])]
 
     plan, _, answer = _ask('plan', data['constraints']['skill'], content, check)
-    return {'plan': plan, 'assumptions': _assumptions(answer), 'checks': plan_checks(plan)}
+    return {'plan': plan, 'assumptions': _assumptions(answer), 'checks': all_checks(plan)}
 
 
 def prd_tasks(raw_input: dict[str, Any], idea: dict[str, Any], plan: dict[str, Any], visitor: str) -> dict[str, Any]:
@@ -423,7 +434,7 @@ def prd_tasks(raw_input: dict[str, Any], idea: dict[str, Any], plan: dict[str, A
             raise ValueError('daftar tasks kosong')
         if len(tasks) > limit:
             problems.append(f'Ada {len(tasks)} task, batasnya {limit}. Gabungkan task yang terlalu kecil.')
-        return tasks, problems
+        return tasks, problems + tasks_consistency(plan, tasks)
 
     tasks, problems, answer = _ask('tasks', skill, content, check)
     return {'tasks': tasks[:limit], 'assumptions': _assumptions(answer), 'problems': problems}
@@ -452,90 +463,102 @@ def render_prd_markdown(state: dict[str, Any], date: str = '') -> str:
     stack, cons = raw.get('stack') or {}, raw.get('constraints') or {}
     pending = '_Belum dibuat. Jalankan tahap ini di ERD Generator._'
     name = idea.get('product_name') or 'Produk Baru'
-    out = [f'# PRD: {name}', '']
-    meta = [('Tanggal', date), ('Bahasa', raw.get('language', '')), ('Tech stack', ', '.join(f'{k} {stack[k]}' for k in STACK_FIELDS if stack.get(k))),
-            ('Tingkat keahlian', cons.get('skill', '')), ('Budget infra', cons.get('budget', ''))]
-    out += ['| Metadata | Keterangan |', '|---|---|', *[f'| {k} | {_cell(v)} |' for k, v in meta if v], '']
+    sections: list[tuple[str, list[str]]] = []
 
-    out += ['## 1. Ringkasan', '']
     if idea:
-        out += [f"**Masalah.** {idea.get('problem_statement', '')}", '',
+        body = [f"**Masalah.** {idea.get('problem_statement', '')}", '',
                 f"**Solusi inti.** {idea.get('solution', '')}", '',
                 f"**Target pengguna.** {', '.join(idea.get('target_users') or [])}", '',
-                f"**Core value.** {idea.get('core_value', '')}", '']
+                f"**Core value.** {idea.get('core_value', '')}"]
     else:
-        out += [pending, '']
+        body = [pending]
+    sections.append(('Ringkasan', body))
+    sections.append(('Scope MVP', [_bullets(idea.get('mvp_scope') or []) if idea else pending, '',
+                                   '### Non-Goals', '', _bullets(idea.get('non_goals') or []) if idea else pending]))
 
-    out += ['## 2. Scope MVP', '', _bullets(idea.get('mvp_scope') or []) if idea else pending, '',
-            '### Non-Goals', '', _bullets(idea.get('non_goals') or []) if idea else pending, '']
-
-    out += ['## 3. Struktur Fitur', '']
     features = idea.get('features') or [] if idea else []
-    if features:
-        for phase in sorted({f['phase'] for f in features}):
-            out += [f'### Fase {phase}' + (' (MVP)' if phase == 1 else ''), '']
-            for f in (f for f in features if f['phase'] == phase):
-                subs = ', '.join(s for s in f.get('sub_features') or [] if str(s).strip())
-                out.append(f"- **{f['name']}**" + (f': {subs}' if subs else ''))
-            out.append('')
-    else:
-        out += [pending, '']
+    body = []
+    for phase in sorted({f['phase'] for f in features}):
+        body += [f'### Fase {phase}' + (' (MVP)' if phase == 1 else ''), '']
+        for f in (f for f in features if f['phase'] == phase):
+            subs = ', '.join(s for s in f.get('sub_features') or [] if str(s).strip())
+            body.append(f"- **{f['name']}**" + (f': {subs}' if subs else ''))
+        body.append('')
+    sections.append(('Struktur Fitur', body[:-1] if body else [pending]))
 
-    out += ['## 4. User Journey', '']
     if plan:
         steps = [s for s in plan.get('user_journey') or [] if str(s).strip()]
-        out += [*(f'{n}. {step}' for n, step in enumerate(steps, start=1)), '',
+        body = [*(f'{n}. {step}' for n, step in enumerate(steps, start=1)), '',
                 'Use case diagram (tempel di tab Teks UML, jenis Use Case):', '', '```text',
-                plan.get('usecase_text', ''), '```', '']
+                plan.get('usecase_text', ''), '```']
     else:
-        out += [pending, '']
+        body = [pending]
+    sections.append(('User Journey', body))
 
-    out += ['## 5. Arsitektur', '']
     if plan and plan.get('architecture'):
-        out += ['| Lapisan | Pilihan | Alasan |', '|---|---|---|',
-                *[f"| {_cell(a['layer'])} | {_cell(a['choice'])} | {_cell(a['reason'])} |" for a in plan['architecture']], '']
+        body = ['| Lapisan | Pilihan | Alasan |', '|---|---|---|',
+                *[f"| {_cell(a['layer'])} | {_cell(a['choice'])} | {_cell(a['reason'])} |" for a in plan['architecture']]]
     else:
-        out += [pending, '']
+        body = [pending]
+    sections.append(('Arsitektur', body))
 
-    out += ['## 6. Data Model', '']
+    body = []
     if plan:
         if plan.get('entities'):
-            out += ['| Entitas | Kegunaan |', '|---|---|',
-                    *[f"| {_cell(e['name'])} | {_cell(e['purpose'])} |" for e in plan['entities']], '']
-        out += ['```sql', plan.get('ddl', ''), '```', '']
-    else:
-        out += [pending, '']
+            body += ['| Entitas | Kegunaan |', '|---|---|',
+                     *[f"| {_cell(e['name'])} | {_cell(e['purpose'])} |" for e in plan['entities']], '']
+        body += ['```sql', plan.get('ddl', ''), '```']
+    sections.append(('Data Model', body or [pending]))
 
-    out += ['## 7. API Spec', '']
-    if plan and plan.get('api'):
-        for a in plan['api']:
-            out += [f"### `{a['method']} {a['path']}`", '', a.get('summary', ''), '',
-                    'Request:', '', '```json', json.dumps(a.get('request', {}), ensure_ascii=False, indent=2), '```', '',
-                    'Response:', '', '```json', json.dumps(a.get('response', {}), ensure_ascii=False, indent=2), '```', '']
-            if a.get('errors'):
-                out += ['Error:', '', _bullets(a['errors']), '']
-    else:
-        out += ['_Tidak ada endpoint._' if plan else pending, '']
+    body = []
+    for a in plan.get('api') or [] if plan else []:
+        body += [f"### `{a['method']} {a['path']}`", '', a.get('summary', ''), '',
+                 'Request:', '', '```json', json.dumps(a.get('request', {}), ensure_ascii=False, indent=2), '```', '',
+                 'Response:', '', '```json', json.dumps(a.get('response', {}), ensure_ascii=False, indent=2), '```', '']
+        if a.get('errors'):
+            body += ['Error:', '', _bullets(a['errors']), '']
+    sections.append(('API Spec', body[:-1] if body else ['_Tidak ada endpoint._' if plan else pending]))
 
     if plan and plan.get('ai_tools'):
-        out += ['## 8. Tool-call AI', '']
+        body = []
         for t in plan['ai_tools']:
-            out += [f"### `{t['name']}`", '', t.get('description', ''), '', '```json',
-                    json.dumps(t.get('parameters', {}), ensure_ascii=False, indent=2), '```', '']
+            body += [f"### `{t['name']}`", '', t.get('description', ''), '', '```json',
+                     json.dumps(t.get('parameters', {}), ensure_ascii=False, indent=2), '```', '']
+        sections.append(('Tool-call AI', body[:-1]))
 
-    n = 9 if plan and plan.get('ai_tools') else 8
-    out += [f'## {n}. Atomic Tasks', '']
+    rows = traceability(idea, plan) if idea and plan else []
+    if rows:
+        sections.append(('Keterlacakan Fitur', [
+            'Setiap sub-fitur MVP, use case yang memakainya, serta tabel dan endpoint yang membuatnya berjalan.', '',
+            '| Fitur | Sub-fitur | Use case | Tabel | Endpoint |', '|---|---|---|---|---|',
+            *[f"| {_cell(r['feature'])} | {_cell(r['sub_feature'])} | {_cell(', '.join(r['usecases']) or '-')} | "
+              f"{_cell(', '.join(r['tables']) or '-')} | {_cell(r['endpoint'] or '-')} |" for r in rows]]))
+
     if tasks:
-        out += ['Kerjakan berurutan; sebuah task baru dimulai setelah semua task di kolom "Bergantung" selesai.', '',
+        body = ['Kerjakan berurutan; sebuah task baru dimulai setelah semua task di kolom "Bergantung" selesai.', '',
                 '| ID | Judul | Bergantung | File | Kriteria selesai |', '|---|---|---|---|---|',
                 *[f"| {t['id']} | {_cell(t['title'])} | {', '.join(t.get('depends_on') or []) or '-'} | "
                   f"{_cell(', '.join(t.get('files') or []))} | {_cell('; '.join(t.get('acceptance') or []))} |"
-                  for t in tasks], '']
+                  for t in tasks]]
         detailed = [t for t in tasks if t.get('description')]
         if detailed:
-            out += ['### Rincian', '', *[f"- **{t['id']}** {t['description']}" for t in detailed], '']
+            body += ['', '### Rincian', '', *[f"- **{t['id']}** {t['description']}" for t in detailed]]
     else:
-        out += [pending, '']
+        body = [pending]
+    sections.append(('Atomic Tasks', body))
 
-    out += [f'## {n + 1}. Asumsi dan Pertanyaan Terbuka', '', _bullets(_strings(state.get('assumptions'), 40)), '']
+    body = [_bullets(_strings(state.get('assumptions'), 40))]
+    issues = _strings(state.get('issues'), 40)
+    if issues:
+        body += ['', '### Belum sinkron', '', 'Hal yang masih belum cocok antar-bagian PRD saat dokumen ini dibuat:', '',
+                 _bullets(issues)]
+    sections.append(('Asumsi dan Pertanyaan Terbuka', body))
+
+    out = [f'# PRD: {name}', '']
+    meta = [('Tanggal', date), ('Bahasa', raw.get('language', '')),
+            ('Tech stack', ', '.join(f'{k} {stack[k]}' for k in STACK_FIELDS if stack.get(k))),
+            ('Tingkat keahlian', cons.get('skill', '')), ('Budget infra', cons.get('budget', ''))]
+    out += ['| Metadata | Keterangan |', '|---|---|', *[f'| {k} | {_cell(v)} |' for k, v in meta if v], '']
+    for n, (title, body) in enumerate(sections, start=1):
+        out += [f'## {n}. {title}', '', *body, '']
     return '\n'.join(out).rstrip() + '\n'

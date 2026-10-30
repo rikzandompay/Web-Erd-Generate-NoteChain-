@@ -207,6 +207,7 @@ class PrdRequest(BaseModel):
     plan: dict | None = None
     tasks: list | None = None
     assumptions: list = []
+    issues: list = []
 
 
 @app.post('/api/prd/questions')

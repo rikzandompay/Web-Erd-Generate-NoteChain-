@@ -212,3 +212,32 @@ def test_long_labels_wrap_inside_the_diamond():
     assert diamond_text('mengelompokkan') == 'mengelompokkan'
     assert diamond_text('menulis') == 'menulis'
     assert diamond_text('<script>') == '&lt;script&gt;'                 # names from SQL comments are escaped
+
+
+# ── An HR system: the employee does, the shift is used ───────────────────────
+
+def test_employee_tables_read_correctly():
+    assert relation_label('absensi', 'karyawan', column='karyawan_id') == 'melakukan'
+    assert relation_label('cuti', 'karyawan', column='karyawan_id') == 'mengajukan'
+    assert relation_label('lembur', 'pegawai') == 'mengajukan'
+    assert relation_label('gaji', 'karyawan', column='karyawan_id') == 'menerima'
+    assert relation_label('penggajian', 'employee') == 'menerima'
+    assert relation_label('xyz', 'karyawan') == 'memiliki'              # no longer "mengelola" for anything unknown
+    assert relation_label('absensi', 'shift', column='shift_id') == 'digunakan dalam'
+    assert relation_label('absensi', 'users', column='karyawan_id') == 'melakukan'   # a generic users table seen as an employee
+
+
+def test_admin_like_tables_are_unchanged():
+    assert relation_label('produk', 'users') == 'mengelola' and relation_label('barang_masuk', 'users') == 'mencatat'
+    assert relation_label('artikel', 'admin') == 'menulis'
+
+
+def test_presensiku_prd_relations():
+    sql = """
+    CREATE TABLE karyawan (id SERIAL PRIMARY KEY, nama VARCHAR(100));
+    CREATE TABLE shift (id SERIAL PRIMARY KEY, nama_shift VARCHAR(50));
+    CREATE TABLE absensi (id SERIAL PRIMARY KEY, karyawan_id INT REFERENCES karyawan(id), shift_id INT REFERENCES shift(id));
+    CREATE TABLE cuti (id SERIAL PRIMARY KEY, karyawan_id INT REFERENCES karyawan(id));
+    CREATE TABLE gaji (id SERIAL PRIMARY KEY, karyawan_id INT REFERENCES karyawan(id));
+    """
+    assert _diamond_labels(sql) == ['digunakan dalam', 'melakukan', 'menerima', 'mengajukan']

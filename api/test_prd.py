@@ -76,7 +76,7 @@ def test_idea_stage(monkeypatch):
 def test_plan_stage_checks_sql_and_use_case(monkeypatch):
     fake_model(monkeypatch, PLAN_EXAMPLE)
     out = prd.prd_plan(INPUT, IDEA_EXAMPLE['idea'], 'v')
-    assert out['checks'] == {'ddl_errors': [], 'usecase_errors': []}
+    assert out['checks'] == {'ddl_errors': [], 'usecase_errors': [], 'consistency': []}
     assert out['plan']['api'][0]['path'] == '/api/donasi'
 
 
@@ -163,6 +163,9 @@ def test_instruction_examples_pass_the_same_checks():
     assert prd.normalize_idea(IDEA_EXAMPLE)['mvp_scope']
     assert prd.plan_checks(prd.normalize_plan(PLAN_EXAMPLE)) == {'ddl_errors': [], 'usecase_errors': []}
     assert prd.order_tasks(TASKS_EXAMPLE['tasks'])[1] == []
+    from prd_consistency import plan_consistency, tasks_consistency
+    assert plan_consistency(prd.normalize_idea(IDEA_EXAMPLE), prd.normalize_plan(PLAN_EXAMPLE)) == []
+    assert tasks_consistency(prd.normalize_plan(PLAN_EXAMPLE), prd.order_tasks(TASKS_EXAMPLE['tasks'])[0]) == []
     assert len(prd.normalize_questions(QUESTIONS_EXAMPLE)) == 5
     for stage in ('questions', 'idea', 'plan', 'tasks'):
         assert len(instruction(stage)) < 9000
@@ -180,8 +183,9 @@ def test_markdown_has_every_section_in_order():
     md = prd.render_prd_markdown(_full_state(), '2026-10-25')
     heads = [line for line in md.splitlines() if line.startswith('## ')]
     assert heads == ['## 1. Ringkasan', '## 2. Scope MVP', '## 3. Struktur Fitur', '## 4. User Journey',
-                     '## 5. Arsitektur', '## 6. Data Model', '## 7. API Spec', '## 8. Atomic Tasks',
-                     '## 9. Asumsi dan Pertanyaan Terbuka']
+                     '## 5. Arsitektur', '## 6. Data Model', '## 7. API Spec', '## 8. Keterlacakan Fitur',
+                     '## 9. Atomic Tasks', '## 10. Asumsi dan Pertanyaan Terbuka']
+    assert '| Verifikasi Donasi | Catatan verifikasi | Verifikasi Donasi | donasi | PATCH /api/donasi/{id}/verifikasi |' in md
     assert '### Fase 1 (MVP)' in md and '- **Pencatatan Donasi**: Form donasi, Unggah bukti transfer' in md
     assert md.startswith('# PRD: DonasiKu') and '| Tanggal | 2026-10-25 |' in md
     assert '```sql\nCREATE TABLE donatur' in md and '### `POST /api/donasi`' in md
@@ -195,7 +199,7 @@ def test_markdown_marks_missing_stages_and_tool_section_only_when_needed():
     state['plan'] = copy.deepcopy(PLAN_EXAMPLE['plan'])
     state['plan']['ai_tools'] = [{'name': 'cari_donasi', 'description': 'Mencari donasi', 'parameters': {'type': 'object'}}]
     md = prd.render_prd_markdown(state)
-    assert '## 8. Tool-call AI' in md and '## 9. Atomic Tasks' in md and '## 10. Asumsi' in md
+    assert '## 8. Tool-call AI' in md and '## 9. Keterlacakan Fitur' in md and '## 10. Atomic Tasks' in md and '## 11. Asumsi' in md
 
 
 def test_the_sql_and_use_case_in_the_markdown_build_diagrams():
